@@ -25,10 +25,10 @@ Personal context manager for Claude. Stop repeating yourself.
 
 ```bash
 # With bun (recommended)
-bun install -g think-cli
+bun install -g claude-think
 
 # With npm
-npm install -g think-cli
+npm install -g claude-think
 ```
 
 ## Quick Start
