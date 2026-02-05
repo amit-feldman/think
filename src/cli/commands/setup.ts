@@ -1,28 +1,10 @@
-import { writeFile, readFile } from "fs/promises";
+import { writeFile } from "fs/promises";
 import { existsSync } from "fs";
-import * as readline from "readline";
+import * as p from "@clack/prompts";
 import chalk from "chalk";
 import { CONFIG, thinkPath } from "../../core/config";
 import { printBanner } from "../../core/banner";
 import { syncCommand } from "./sync";
-
-interface SetupAnswers {
-  name: string;
-  style: "direct" | "conversational" | "detailed";
-  packageManager: "bun" | "pnpm" | "npm" | "yarn";
-  languages: string[];
-  backend: string;
-  frontend: string;
-  css: string;
-  database: string;
-  infrastructure: string;
-  monorepo: string;
-  testing: string[];
-  linting: string[];
-  validation: string[];
-  editor: string;
-  avoidAll: boolean;
-}
 
 /**
  * Interactive profile setup wizard
@@ -34,289 +16,293 @@ export async function setupCommand(): Promise<void> {
   }
 
   printBanner();
-  console.log(chalk.bold("Profile Setup\n"));
-  console.log(chalk.dim("Let's configure your preferences.\n"));
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
+  p.intro(chalk.bgCyan(chalk.black(" think setup ")));
+
+  const name = await p.text({
+    message: "What's your name?",
+    placeholder: "Your name",
   });
+  if (p.isCancel(name)) return handleCancel();
 
-  const question = (prompt: string): Promise<string> => {
-    return new Promise((resolve) => {
-      rl.question(prompt, resolve);
+  const style = await p.select({
+    message: "What communication style do you prefer?",
+    options: [
+      { value: "direct", label: "Direct & minimal", hint: "no fluff, just answers" },
+      { value: "conversational", label: "Conversational", hint: "friendly but efficient" },
+      { value: "detailed", label: "Detailed", hint: "thorough explanations" },
+    ],
+  });
+  if (p.isCancel(style)) return handleCancel();
+
+  const packageManager = await p.select({
+    message: "Preferred package manager?",
+    options: [
+      { value: "bun", label: "Bun" },
+      { value: "pnpm", label: "pnpm" },
+      { value: "npm", label: "npm" },
+      { value: "yarn", label: "yarn" },
+    ],
+  });
+  if (p.isCancel(packageManager)) return handleCancel();
+
+  let bunFeatures: string[] = [];
+  if (packageManager === "bun") {
+    const features = await p.multiselect({
+      message: "Bun features you use?",
+      options: [
+        { value: "catalog", label: "Dependency catalog" },
+        { value: "workspaces", label: "Bun workspaces" },
+        { value: "macros", label: "Bun macros" },
+        { value: "shell", label: "Bun shell ($``)" },
+        { value: "sqlite", label: "bun:sqlite" },
+        { value: "test", label: "bun test" },
+      ],
+      required: false,
     });
+    if (p.isCancel(features)) return handleCancel();
+    bunFeatures = features as string[];
+  }
+
+  const languages = await p.multiselect({
+    message: "Primary programming languages?",
+    options: [
+      { value: "TypeScript", label: "TypeScript" },
+      { value: "JavaScript", label: "JavaScript" },
+      { value: "Python", label: "Python" },
+      { value: "Ruby", label: "Ruby" },
+      { value: "Rust", label: "Rust" },
+      { value: "Go", label: "Go" },
+      { value: "Java", label: "Java" },
+      { value: "C#", label: "C#" },
+      { value: "PHP", label: "PHP" },
+      { value: "Elixir", label: "Elixir" },
+    ],
+    required: true,
+  });
+  if (p.isCancel(languages)) return handleCancel();
+
+  const backend = await p.select({
+    message: "Backend framework?",
+    options: [
+      { value: "none", label: "None / Custom" },
+      { value: "Rails", label: "Ruby on Rails" },
+      { value: "Django", label: "Django" },
+      { value: "FastAPI", label: "FastAPI" },
+      { value: "Express", label: "Express.js" },
+      { value: "Hono", label: "Hono" },
+      { value: "Phoenix", label: "Phoenix (Elixir)" },
+      { value: "Spring", label: "Spring Boot" },
+      { value: "ASP.NET", label: "ASP.NET Core" },
+      { value: "Laravel", label: "Laravel" },
+    ],
+  });
+  if (p.isCancel(backend)) return handleCancel();
+
+  const frontend = await p.multiselect({
+    message: "Frontend frameworks?",
+    options: [
+      { value: "React", label: "React" },
+      { value: "Vue", label: "Vue.js" },
+      { value: "Svelte", label: "Svelte" },
+      { value: "Angular", label: "Angular" },
+      { value: "Solid", label: "SolidJS" },
+      { value: "HTMX", label: "HTMX" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(frontend)) return handleCancel();
+
+  const css = await p.multiselect({
+    message: "CSS / UI frameworks?",
+    options: [
+      { value: "Tailwind", label: "Tailwind CSS" },
+      { value: "Vuetify", label: "Vuetify" },
+      { value: "Bootstrap", label: "Bootstrap" },
+      { value: "Material UI", label: "Material UI" },
+      { value: "shadcn/ui", label: "shadcn/ui" },
+      { value: "CSS Modules", label: "CSS Modules" },
+      { value: "styled-components", label: "styled-components" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(css)) return handleCancel();
+
+  const database = await p.multiselect({
+    message: "Databases?",
+    options: [
+      { value: "PostgreSQL", label: "PostgreSQL" },
+      { value: "MySQL", label: "MySQL" },
+      { value: "MongoDB", label: "MongoDB" },
+      { value: "SQLite", label: "SQLite" },
+      { value: "Redis", label: "Redis" },
+      { value: "Supabase", label: "Supabase" },
+      { value: "Firebase", label: "Firebase" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(database)) return handleCancel();
+
+  const orm = await p.multiselect({
+    message: "ORM / database tools?",
+    options: [
+      { value: "Prisma", label: "Prisma" },
+      { value: "Drizzle", label: "Drizzle" },
+      { value: "TypeORM", label: "TypeORM" },
+      { value: "Kysely", label: "Kysely" },
+      { value: "Sequelize", label: "Sequelize" },
+      { value: "Mongoose", label: "Mongoose" },
+      { value: "ActiveRecord", label: "ActiveRecord (Rails)" },
+      { value: "SQLAlchemy", label: "SQLAlchemy" },
+      { value: "Django ORM", label: "Django ORM" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(orm)) return handleCancel();
+
+  const auth = await p.multiselect({
+    message: "Authentication?",
+    options: [
+      { value: "better-auth", label: "better-auth" },
+      { value: "Auth.js", label: "Auth.js (NextAuth)" },
+      { value: "Lucia", label: "Lucia" },
+      { value: "Clerk", label: "Clerk" },
+      { value: "Supabase Auth", label: "Supabase Auth" },
+      { value: "Firebase Auth", label: "Firebase Auth" },
+      { value: "Passport.js", label: "Passport.js" },
+      { value: "Devise", label: "Devise (Rails)" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(auth)) return handleCancel();
+
+  const infrastructure = await p.multiselect({
+    message: "Infrastructure / deployment?",
+    options: [
+      { value: "Docker Compose", label: "Docker + Compose" },
+      { value: "Docker", label: "Docker only" },
+      { value: "Kubernetes", label: "Kubernetes" },
+      { value: "Fly.io", label: "Fly.io" },
+      { value: "Vercel", label: "Vercel" },
+      { value: "Railway", label: "Railway" },
+      { value: "Render", label: "Render" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(infrastructure)) return handleCancel();
+
+  const monorepo = await p.select({
+    message: "Monorepo tooling?",
+    options: [
+      { value: "none", label: "None / Single repo" },
+      { value: "Turborepo", label: "Turborepo" },
+      { value: "Bun workspaces", label: "Bun workspaces" },
+      { value: "Nx", label: "Nx" },
+      { value: "pnpm workspaces", label: "pnpm workspaces" },
+      { value: "Lerna", label: "Lerna" },
+    ],
+  });
+  if (p.isCancel(monorepo)) return handleCancel();
+
+  const testing = await p.multiselect({
+    message: "Testing frameworks?",
+    options: [
+      { value: "bun test", label: "bun test" },
+      { value: "Vitest", label: "Vitest" },
+      { value: "Jest", label: "Jest" },
+      { value: "RSpec", label: "RSpec" },
+      { value: "pytest", label: "pytest" },
+      { value: "Playwright", label: "Playwright (E2E)" },
+      { value: "Cypress", label: "Cypress (E2E)" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(testing)) return handleCancel();
+
+  const linting = await p.multiselect({
+    message: "Linting & formatting?",
+    options: [
+      { value: "Biome", label: "Biome" },
+      { value: "ESLint", label: "ESLint" },
+      { value: "Prettier", label: "Prettier" },
+      { value: "oxlint", label: "oxlint" },
+      { value: "Rubocop", label: "Rubocop" },
+      { value: "Ruff", label: "Ruff (Python)" },
+      { value: "rustfmt", label: "rustfmt" },
+      { value: "gofmt", label: "gofmt" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(linting)) return handleCancel();
+
+  const validation = await p.multiselect({
+    message: "Validation & schema libraries?",
+    options: [
+      { value: "Zod", label: "Zod" },
+      { value: "Yup", label: "Yup" },
+      { value: "Valibot", label: "Valibot" },
+      { value: "ArkType", label: "ArkType" },
+      { value: "io-ts", label: "io-ts" },
+      { value: "TypeBox", label: "TypeBox" },
+      { value: "Pydantic", label: "Pydantic" },
+      { value: "Joi", label: "Joi" },
+    ],
+    required: false,
+  });
+  if (p.isCancel(validation)) return handleCancel();
+
+  const editor = await p.select({
+    message: "Primary editor?",
+    options: [
+      { value: "Zed", label: "Zed" },
+      { value: "VS Code", label: "VS Code" },
+      { value: "Cursor", label: "Cursor" },
+      { value: "Neovim", label: "Neovim" },
+      { value: "WebStorm", label: "WebStorm" },
+    ],
+  });
+  if (p.isCancel(editor)) return handleCancel();
+
+  const avoidAnswer = await p.select({
+    message: "What should Claude avoid?",
+    options: [
+      { value: "all", label: "All", hint: "over-engineering, verbose explanations, extra features" },
+      { value: "some", label: "Just over-engineering" },
+      { value: "none", label: "No specific restrictions" },
+    ],
+  });
+  if (p.isCancel(avoidAnswer)) return handleCancel();
+
+  const s = p.spinner();
+  s.start("Generating profile");
+
+  // Generate profile
+  const styleDescriptions: Record<string, string[]> = {
+    direct: [
+      "Be direct and minimal - no fluff, just answers and code",
+      "Skip lengthy reasoning unless asked",
+      "Don't explain obvious things",
+    ],
+    conversational: [
+      "Be friendly but efficient",
+      "Brief explanations when helpful",
+      "Keep a conversational tone",
+    ],
+    detailed: [
+      "Provide thorough explanations",
+      "Include context and reasoning",
+      "Explain trade-offs and alternatives",
+    ],
   };
 
-  const select = async (
-    prompt: string,
-    options: { key: string; label: string }[]
-  ): Promise<string> => {
-    console.log(chalk.cyan(prompt));
-    options.forEach((opt, i) => {
-      console.log(`  ${chalk.green(i + 1)}) ${opt.label}`);
-    });
-    const answer = await question(chalk.dim("Enter number: "));
-    const idx = parseInt(answer) - 1;
-    if (idx >= 0 && idx < options.length) {
-      return options[idx].key;
-    }
-    return options[0].key;
-  };
-
-  const multiSelect = async (
-    prompt: string,
-    options: { key: string; label: string }[]
-  ): Promise<string[]> => {
-    console.log(chalk.cyan(prompt));
-    options.forEach((opt, i) => {
-      console.log(`  ${chalk.green(i + 1)}) ${opt.label}`);
-    });
-    const answer = await question(chalk.dim("Enter numbers (comma-separated): "));
-    const indices = answer.split(",").map((s) => parseInt(s.trim()) - 1);
-    return indices
-      .filter((i) => i >= 0 && i < options.length)
-      .map((i) => options[i].key);
-  };
-
-  try {
-    // Name
-    const name = await question(chalk.cyan("What's your name? "));
-    console.log();
-
-    // Communication style
-    const style = await select("What communication style do you prefer?", [
-      { key: "direct", label: "Direct & minimal - no fluff, just answers" },
-      { key: "conversational", label: "Conversational - friendly but efficient" },
-      { key: "detailed", label: "Detailed - thorough explanations" },
-    ]);
-    console.log();
-
-    // Package manager
-    const packageManager = await select("Preferred package manager?", [
-      { key: "bun", label: "bun" },
-      { key: "pnpm", label: "pnpm" },
-      { key: "npm", label: "npm" },
-      { key: "yarn", label: "yarn" },
-    ]);
-    console.log();
-
-    // Bun-specific features
-    let bunFeatures: string[] = [];
-    if (packageManager === "bun") {
-      bunFeatures = await multiSelect("Bun features you use?", [
-        { key: "catalog", label: "Dependency catalog" },
-        { key: "workspaces", label: "Bun workspaces" },
-        { key: "macros", label: "Bun macros" },
-        { key: "shell", label: "Bun shell ($``)" },
-        { key: "sqlite", label: "bun:sqlite" },
-        { key: "test", label: "bun test" },
-      ]);
-      console.log();
-    }
-
-    // Languages
-    const languages = await multiSelect("Primary programming languages?", [
-      { key: "TypeScript", label: "TypeScript" },
-      { key: "JavaScript", label: "JavaScript" },
-      { key: "Python", label: "Python" },
-      { key: "Ruby", label: "Ruby" },
-      { key: "Rust", label: "Rust" },
-      { key: "Go", label: "Go" },
-      { key: "Java", label: "Java" },
-      { key: "C#", label: "C#" },
-      { key: "PHP", label: "PHP" },
-      { key: "Elixir", label: "Elixir" },
-    ]);
-    console.log();
-
-    // Backend framework
-    const backend = await select("Backend framework?", [
-      { key: "none", label: "None / Custom" },
-      { key: "Rails", label: "Ruby on Rails" },
-      { key: "Django", label: "Django" },
-      { key: "FastAPI", label: "FastAPI" },
-      { key: "Express", label: "Express.js" },
-      { key: "Hono", label: "Hono" },
-      { key: "Phoenix", label: "Phoenix (Elixir)" },
-      { key: "Spring", label: "Spring Boot" },
-      { key: "ASP.NET", label: "ASP.NET Core" },
-      { key: "Laravel", label: "Laravel" },
-    ]);
-    console.log();
-
-    // Frontend framework
-    const frontend = await select("Frontend framework?", [
-      { key: "none", label: "None / Backend only" },
-      { key: "React", label: "React" },
-      { key: "Vue", label: "Vue.js" },
-      { key: "Svelte", label: "Svelte" },
-      { key: "Angular", label: "Angular" },
-      { key: "Solid", label: "SolidJS" },
-      { key: "HTMX", label: "HTMX" },
-    ]);
-    console.log();
-
-    // CSS/UI framework
-    const css = await select("CSS / UI framework?", [
-      { key: "none", label: "Plain CSS / None" },
-      { key: "Tailwind", label: "Tailwind CSS" },
-      { key: "Vuetify", label: "Vuetify" },
-      { key: "Bootstrap", label: "Bootstrap" },
-      { key: "Material UI", label: "Material UI" },
-      { key: "shadcn/ui", label: "shadcn/ui" },
-      { key: "CSS Modules", label: "CSS Modules" },
-      { key: "styled-components", label: "styled-components" },
-    ]);
-    console.log();
-
-    // Database
-    const database = await select("Primary database?", [
-      { key: "none", label: "None" },
-      { key: "PostgreSQL", label: "PostgreSQL" },
-      { key: "MySQL", label: "MySQL" },
-      { key: "MongoDB", label: "MongoDB" },
-      { key: "SQLite", label: "SQLite" },
-      { key: "Redis", label: "Redis" },
-      { key: "Supabase", label: "Supabase" },
-      { key: "Firebase", label: "Firebase" },
-    ]);
-    console.log();
-
-    // ORM / Database tools
-    const orm = await multiSelect("ORM / database tools?", [
-      { key: "Prisma", label: "Prisma" },
-      { key: "Drizzle", label: "Drizzle" },
-      { key: "TypeORM", label: "TypeORM" },
-      { key: "Kysely", label: "Kysely" },
-      { key: "Sequelize", label: "Sequelize" },
-      { key: "Mongoose", label: "Mongoose" },
-      { key: "ActiveRecord", label: "ActiveRecord (Rails)" },
-      { key: "SQLAlchemy", label: "SQLAlchemy" },
-      { key: "Django ORM", label: "Django ORM" },
-    ]);
-    console.log();
-
-    // Auth
-    const auth = await multiSelect("Authentication?", [
-      { key: "better-auth", label: "better-auth" },
-      { key: "Auth.js", label: "Auth.js (NextAuth)" },
-      { key: "Lucia", label: "Lucia" },
-      { key: "Clerk", label: "Clerk" },
-      { key: "Supabase Auth", label: "Supabase Auth" },
-      { key: "Firebase Auth", label: "Firebase Auth" },
-      { key: "Passport.js", label: "Passport.js" },
-      { key: "Devise", label: "Devise (Rails)" },
-    ]);
-    console.log();
-
-    // Infrastructure
-    const infrastructure = await select("Infrastructure / containerization?", [
-      { key: "none", label: "None" },
-      { key: "Docker Compose", label: "Docker + Compose" },
-      { key: "Docker", label: "Docker only" },
-      { key: "Kubernetes", label: "Kubernetes" },
-      { key: "Fly.io", label: "Fly.io" },
-      { key: "Vercel", label: "Vercel" },
-      { key: "Railway", label: "Railway" },
-    ]);
-    console.log();
-
-    // Monorepo
-    const monorepo = await select("Monorepo tooling?", [
-      { key: "none", label: "None / Single repo" },
-      { key: "Turborepo", label: "Turborepo" },
-      { key: "Bun workspaces", label: "Bun workspaces" },
-      { key: "Nx", label: "Nx" },
-      { key: "pnpm workspaces", label: "pnpm workspaces" },
-      { key: "Lerna", label: "Lerna" },
-    ]);
-    console.log();
-
-    // Testing
-    const testing = await multiSelect("Testing frameworks?", [
-      { key: "bun test", label: "bun test" },
-      { key: "Vitest", label: "Vitest" },
-      { key: "Jest", label: "Jest" },
-      { key: "RSpec", label: "RSpec" },
-      { key: "pytest", label: "pytest" },
-      { key: "Playwright", label: "Playwright (E2E)" },
-      { key: "Cypress", label: "Cypress (E2E)" },
-    ]);
-    console.log();
-
-    // Linting/Formatting
-    const linting = await multiSelect("Linting & formatting?", [
-      { key: "Biome", label: "Biome" },
-      { key: "ESLint", label: "ESLint" },
-      { key: "Prettier", label: "Prettier" },
-      { key: "oxlint", label: "oxlint" },
-      { key: "Rubocop", label: "Rubocop" },
-      { key: "Ruff", label: "Ruff (Python)" },
-      { key: "rustfmt", label: "rustfmt" },
-      { key: "gofmt", label: "gofmt" },
-    ]);
-    console.log();
-
-    // Validation/Schema
-    const validation = await multiSelect("Validation & schema libraries?", [
-      { key: "Zod", label: "Zod" },
-      { key: "Yup", label: "Yup" },
-      { key: "Valibot", label: "Valibot" },
-      { key: "ArkType", label: "ArkType" },
-      { key: "io-ts", label: "io-ts" },
-      { key: "TypeBox", label: "TypeBox" },
-      { key: "Pydantic", label: "Pydantic" },
-      { key: "Joi", label: "Joi" },
-    ]);
-    console.log();
-
-    // Editor
-    const editor = await select("Primary editor?", [
-      { key: "Zed", label: "Zed" },
-      { key: "VS Code", label: "VS Code" },
-      { key: "Cursor", label: "Cursor" },
-      { key: "Neovim", label: "Neovim" },
-    ]);
-    console.log();
-
-    // Avoid patterns
-    const avoidAnswer = await select("What should Claude avoid?", [
-      { key: "all", label: "All: over-engineering, verbose explanations, extra features" },
-      { key: "some", label: "Just over-engineering" },
-      { key: "none", label: "No specific restrictions" },
-    ]);
-    console.log();
-
-    rl.close();
-
-    // Generate profile
-    const styleDescriptions: Record<string, string[]> = {
-      direct: [
-        "Be direct and minimal - no fluff, just answers and code",
-        "Skip lengthy reasoning unless asked",
-        "Don't explain obvious things",
-      ],
-      conversational: [
-        "Be friendly but efficient",
-        "Brief explanations when helpful",
-        "Keep a conversational tone",
-      ],
-      detailed: [
-        "Provide thorough explanations",
-        "Include context and reasoning",
-        "Explain trade-offs and alternatives",
-      ],
-    };
-
-    const profileContent = `---
+  const profileContent = `---
 name: ${name}
 style: ${style}
 ---
 
 # Communication Preferences
 
-${styleDescriptions[style].map((s) => `- ${s}`).join("\n")}
+${styleDescriptions[style as string].map((s) => `- ${s}`).join("\n")}
 - No emojis unless explicitly requested
 - Show code when it's clearer than explanation
 
@@ -326,136 +312,127 @@ ${styleDescriptions[style].map((s) => `- ${s}`).join("\n")}
 - Match existing code patterns in the project
 `;
 
-    await writeFile(thinkPath(CONFIG.files.profile), profileContent);
+  await writeFile(thinkPath(CONFIG.files.profile), profileContent);
 
-    // Generate tools preferences
-    const toolsSections: string[] = ["# Tool Preferences"];
+  // Generate tools preferences
+  const toolsSections: string[] = ["# Tool Preferences"];
 
-    // Runtime & Package Manager
-    const pmAlternatives = ["npm", "pnpm", "yarn", "Node.js"].filter(
-      (p) => p.toLowerCase() !== packageManager.toLowerCase()
-    );
-    const pmSection = [`- Use ${packageManager === "bun" ? "Bun" : packageManager}${pmAlternatives.length ? ` (not ${pmAlternatives.join(", ")})` : ""}`];
+  // Runtime & Package Manager
+  const pmAlternatives = ["npm", "pnpm", "yarn", "Node.js"].filter(
+    (pm) => pm.toLowerCase() !== (packageManager as string).toLowerCase()
+  );
+  const pmSection = [`- Use ${packageManager === "bun" ? "Bun" : packageManager}${pmAlternatives.length ? ` (not ${pmAlternatives.join(", ")})` : ""}`];
 
-    if (bunFeatures.length > 0) {
-      if (bunFeatures.includes("catalog")) pmSection.push("- Use Bun dependency catalog for shared deps");
-      if (bunFeatures.includes("workspaces")) pmSection.push("- Use Bun workspaces for monorepos");
-      if (bunFeatures.includes("macros")) pmSection.push("- Use Bun macros for compile-time code");
-      if (bunFeatures.includes("shell")) pmSection.push("- Use Bun shell ($``) for shell commands");
-      if (bunFeatures.includes("sqlite")) pmSection.push("- Use bun:sqlite for embedded database");
-      if (bunFeatures.includes("test")) pmSection.push("- Use `bun test` for testing");
-    } else {
-      pmSection.push(`- Use \`${packageManager} test\` for testing`);
-    }
+  if (bunFeatures.length > 0) {
+    if (bunFeatures.includes("catalog")) pmSection.push("- Use Bun dependency catalog for shared deps");
+    if (bunFeatures.includes("workspaces")) pmSection.push("- Use Bun workspaces for monorepos");
+    if (bunFeatures.includes("macros")) pmSection.push("- Use Bun macros for compile-time code");
+    if (bunFeatures.includes("shell")) pmSection.push("- Use Bun shell ($``) for shell commands");
+    if (bunFeatures.includes("sqlite")) pmSection.push("- Use bun:sqlite for embedded database");
+    if (bunFeatures.includes("test")) pmSection.push("- Use `bun test` for testing");
+  } else {
+    pmSection.push(`- Use \`${packageManager} test\` for testing`);
+  }
 
-    toolsSections.push(`
+  toolsSections.push(`
 ## Runtime & Package Manager
 ${pmSection.join("\n")}`);
 
-    // Languages
-    toolsSections.push(`
+  // Languages
+  toolsSections.push(`
 ## Languages
-${languages.map((l) => `- ${l}`).join("\n")}`);
+${(languages as string[]).map((l) => `- ${l}`).join("\n")}`);
 
-    // Backend
-    if (backend !== "none") {
-      toolsSections.push(`
+  // Backend
+  if (backend !== "none") {
+    toolsSections.push(`
 ## Backend
 - ${backend}`);
-    }
+  }
 
-    // Frontend
-    if (frontend !== "none") {
-      const frontendAlternatives = ["Next.js", "Vue", "Svelte", "Angular"].filter(
-        (f) => f.toLowerCase() !== frontend.toLowerCase()
-      );
-      toolsSections.push(`
+  // Frontend
+  if ((frontend as string[]).length > 0) {
+    toolsSections.push(`
 ## Frontend
-- ${frontend}${frontendAlternatives.length ? ` (not ${frontendAlternatives.slice(0, 2).join(", ")})` : ""}
+${(frontend as string[]).map((f) => `- ${f}`).join("\n")}
 - Prefer functional components with hooks`);
+  }
 
-      // CSS
-      if (css !== "none") {
-        toolsSections.push(`- ${css} for styling`);
-      }
-    }
+  // CSS
+  if ((css as string[]).length > 0) {
+    toolsSections.push(`
+## CSS / UI
+${(css as string[]).map((c) => `- ${c}`).join("\n")}`);
+  }
 
-    // Database
-    if (database !== "none") {
-      const dbAlternatives = ["SQLite", "MySQL", "MongoDB", "PostgreSQL"].filter(
-        (d) => d.toLowerCase() !== database.toLowerCase()
-      );
-      toolsSections.push(`
+  // Database
+  if ((database as string[]).length > 0) {
+    toolsSections.push(`
 ## Database
-- ${database}${dbAlternatives.length ? ` (not ${dbAlternatives.slice(0, 3).join(", ")})` : ""}`);
-    }
+${(database as string[]).map((d) => `- ${d}`).join("\n")}`);
+  }
 
-    // ORM
-    if (orm.length > 0) {
-      toolsSections.push(`
+  // ORM
+  if ((orm as string[]).length > 0) {
+    toolsSections.push(`
 ## ORM / Database Tools
-${orm.map((o) => `- ${o}`).join("\n")}`);
-    }
+${(orm as string[]).map((o) => `- ${o}`).join("\n")}`);
+  }
 
-    // Auth
-    if (auth.length > 0) {
-      toolsSections.push(`
+  // Auth
+  if ((auth as string[]).length > 0) {
+    toolsSections.push(`
 ## Authentication
-${auth.map((a) => `- ${a}`).join("\n")}`);
-    }
+${(auth as string[]).map((a) => `- ${a}`).join("\n")}`);
+  }
 
-    // Infrastructure
-    if (infrastructure !== "none") {
-      const infraAlternatives = infrastructure.includes("Kubernetes")
-        ? []
-        : ["Kubernetes"];
-      toolsSections.push(`
+  // Infrastructure
+  if ((infrastructure as string[]).length > 0) {
+    toolsSections.push(`
 ## Infrastructure
-- ${infrastructure} for containerization${infraAlternatives.length ? ` (not ${infraAlternatives.join(", ")})` : ""}
-- Prefer simple Docker Compose for local dev`);
-    }
+${(infrastructure as string[]).map((i) => `- ${i}`).join("\n")}`);
+  }
 
-    // Monorepo
-    if (monorepo !== "none") {
-      toolsSections.push(`
+  // Monorepo
+  if (monorepo !== "none") {
+    toolsSections.push(`
 ## Monorepo
 - ${monorepo}`);
-    }
+  }
 
-    // Testing
-    if (testing.length > 0) {
-      toolsSections.push(`
-## Testing
-${testing.map((t) => `- ${t}`).join("\n")}`);
-    }
-
-    // Linting & Formatting
-    if (linting.length > 0) {
-      toolsSections.push(`
-## Linting & Formatting
-${linting.map((l) => `- ${l}`).join("\n")}
-- Use project's existing config when present`);
-    }
-
-    // Validation
-    if (validation.length > 0) {
-      toolsSections.push(`
-## Validation & Schema
-${validation.map((v) => `- ${v}`).join("\n")}`);
-    }
-
-    // Editor
+  // Testing
+  if ((testing as string[]).length > 0) {
     toolsSections.push(`
+## Testing
+${(testing as string[]).map((t) => `- ${t}`).join("\n")}`);
+  }
+
+  // Linting & Formatting
+  if ((linting as string[]).length > 0) {
+    toolsSections.push(`
+## Linting & Formatting
+${(linting as string[]).map((l) => `- ${l}`).join("\n")}
+- Use project's existing config when present`);
+  }
+
+  // Validation
+  if ((validation as string[]).length > 0) {
+    toolsSections.push(`
+## Validation & Schema
+${(validation as string[]).map((v) => `- ${v}`).join("\n")}`);
+  }
+
+  // Editor
+  toolsSections.push(`
 ## Editor
 - Primary: ${editor}`);
 
-    const toolsContent = toolsSections.join("\n");
+  const toolsContent = toolsSections.join("\n");
+  await writeFile(thinkPath(CONFIG.files.tools), toolsContent);
 
-    await writeFile(thinkPath(CONFIG.files.tools), toolsContent);
-
-    // Generate anti-patterns if selected
-    if (avoidAnswer === "all") {
-      const antiSections: string[] = [`# Anti-Patterns to Avoid
+  // Generate anti-patterns if selected
+  if (avoidAnswer === "all") {
+    const antiSections: string[] = [`# Anti-Patterns to Avoid
 
 ## Code Style
 - Don't add comments for obvious code
@@ -468,53 +445,51 @@ ${validation.map((v) => `- ${v}`).join("\n")}`);
 - Don't create unnecessary indirection
 - Don't add "future-proofing" complexity`];
 
-      // Tech choices to avoid
-      const techAvoid: string[] = [];
-      if (packageManager === "bun") {
-        techAvoid.push("- Don't suggest npm/yarn/pnpm - use Bun");
-      }
-      if (frontend === "React") {
-        techAvoid.push("- Don't suggest Next.js - use plain React");
-      }
-      if (infrastructure === "Docker" || infrastructure === "Docker Compose") {
+    // Tech choices to avoid
+    const techAvoid: string[] = [];
+    if (packageManager === "bun") {
+      techAvoid.push("- Don't suggest npm/yarn/pnpm - use Bun");
+    }
+    if ((frontend as string[]).includes("React") && !(frontend as string[]).includes("Next.js")) {
+      techAvoid.push("- Don't suggest Next.js - use plain React");
+    }
+    if ((infrastructure as string[]).includes("Docker") || (infrastructure as string[]).includes("Docker Compose")) {
+      if (!(infrastructure as string[]).includes("Kubernetes")) {
         techAvoid.push("- Don't suggest Kubernetes - use Docker");
       }
-      if (database === "PostgreSQL") {
-        techAvoid.push("- Don't suggest SQLite/MySQL/MongoDB - use PostgreSQL");
-      }
+    }
 
-      if (techAvoid.length > 0) {
-        antiSections.push(`
+    if (techAvoid.length > 0) {
+      antiSections.push(`
 ## Tech Choices
 ${techAvoid.join("\n")}`);
-      }
+    }
 
-      antiSections.push(`
+    antiSections.push(`
 ## Communication
 - Don't explain obvious things
 - Don't repeat back what was just said
 - Don't pad responses with unnecessary context
 `);
 
-      await writeFile(thinkPath(CONFIG.files.antiPatterns), antiSections.join("\n"));
-    }
-
-    console.log(chalk.green("Profile created!\n"));
-
-    // Sync
-    await syncCommand();
-
-    console.log();
-    console.log(chalk.bold("Your profile is ready."));
-    console.log(chalk.dim("Start a new Claude session to use your context."));
-    console.log();
-    console.log("To customize further:");
-    console.log(`  ${chalk.cyan("think edit profile")}    Edit your profile`);
-    console.log(`  ${chalk.cyan("think edit patterns")}   Add coding patterns`);
-    console.log(`  ${chalk.cyan("think learn \"...\"")}    Add learnings over time`);
-
-  } catch (error) {
-    rl.close();
-    throw error;
+    await writeFile(thinkPath(CONFIG.files.antiPatterns), antiSections.join("\n"));
   }
+
+  s.stop("Profile created");
+
+  // Sync
+  await syncCommand();
+
+  p.outro(chalk.green("Your profile is ready!"));
+
+  console.log();
+  console.log("To customize further:");
+  console.log(`  ${chalk.cyan("think edit profile")}    Edit your profile`);
+  console.log(`  ${chalk.cyan("think edit patterns")}   Add coding patterns`);
+  console.log(`  ${chalk.cyan("think learn \"...\"")}    Add learnings over time`);
+}
+
+function handleCancel(): void {
+  p.cancel("Setup cancelled");
+  process.exit(0);
 }
