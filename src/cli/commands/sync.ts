@@ -13,14 +13,14 @@ export async function syncCommand(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(chalk.blue("Syncing ~/.think to Claude plugin..."));
+  console.log(chalk.blue("Syncing ~/.think to ~/.claude/CLAUDE.md..."));
 
   try {
     await generatePlugin();
 
     console.log(chalk.green("Done!"));
     console.log();
-    console.log(`Plugin generated at: ${chalk.cyan(CONFIG.pluginDir)}`);
+    console.log(`Generated: ${chalk.cyan(CONFIG.claudeMdPath)}`);
     console.log();
     console.log("Claude will automatically load your context in new sessions.");
   } catch (error) {

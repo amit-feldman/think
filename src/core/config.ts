@@ -5,8 +5,8 @@ export const CONFIG = {
   // Source directory (user's preferences)
   thinkDir: join(homedir(), ".think"),
 
-  // Output directory (generated Claude plugin)
-  pluginDir: join(homedir(), ".claude", "plugins", "think"),
+  // Output file (global CLAUDE.md that Claude reads automatically)
+  claudeMdPath: join(homedir(), ".claude", "CLAUDE.md"),
 
   // Subdirectories in ~/.think
   dirs: {
