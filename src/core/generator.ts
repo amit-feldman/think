@@ -1,6 +1,7 @@
-import { mkdir, writeFile, readdir, copyFile, rm } from "fs/promises";
+import { mkdir, writeFile, readFile, readdir, copyFile, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 import { CONFIG, thinkPath, pluginPath } from "./config";
 import { parseMarkdown } from "./parser";
 
@@ -13,6 +14,7 @@ export async function generatePlugin(): Promise<void> {
     await rm(CONFIG.pluginDir, { recursive: true });
   }
   await mkdir(CONFIG.pluginDir, { recursive: true });
+  await mkdir(pluginPath(".claude-plugin"), { recursive: true });
   await mkdir(pluginPath("skills"), { recursive: true });
   await mkdir(pluginPath("agents"), { recursive: true });
   await mkdir(pluginPath("hooks"), { recursive: true });
@@ -31,19 +33,23 @@ export async function generatePlugin(): Promise<void> {
 
   // Generate hooks
   await generateHooks();
+
+  // Register plugin in Claude settings
+  await registerPlugin();
 }
 
 async function generateManifest(): Promise<void> {
   const manifest = {
     name: "think",
+    version: "0.1.0",
     description: "Personal context and preferences for Claude",
-    skills: ["skills/*.md"],
-    agents: ["agents/*.md"],
-    hooks: ["hooks/*.md"],
+    skills: "../skills/",
+    agents: "../agents/",
+    hooks: "../hooks/",
   };
 
   await writeFile(
-    pluginPath(CONFIG.plugin.manifest),
+    pluginPath(".claude-plugin", "plugin.json"),
     JSON.stringify(manifest, null, 2)
   );
 }
@@ -186,4 +192,32 @@ async function copyDirectory(src: string, dest: string): Promise<void> {
       await copyFile(join(src, entry.name), join(dest, entry.name));
     }
   }
+}
+
+async function registerPlugin(): Promise<void> {
+  const settingsPath = join(homedir(), ".claude", "settings.json");
+
+  let settings: Record<string, unknown> = {};
+
+  // Read existing settings if they exist
+  if (existsSync(settingsPath)) {
+    try {
+      const content = await readFile(settingsPath, "utf-8");
+      settings = JSON.parse(content);
+    } catch {
+      // If parse fails, start fresh
+      settings = {};
+    }
+  }
+
+  // Ensure enabledPlugins exists
+  if (!settings.enabledPlugins) {
+    settings.enabledPlugins = {};
+  }
+
+  // Add think plugin (local plugins don't need @marketplace suffix)
+  (settings.enabledPlugins as Record<string, boolean>)["think"] = true;
+
+  // Write updated settings
+  await writeFile(settingsPath, JSON.stringify(settings, null, 2));
 }
