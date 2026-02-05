@@ -35,6 +35,115 @@ export async function setupCommand(): Promise<void> {
   });
   if (p.isCancel(style)) return handleCancel();
 
+  // === PROFILE & PERSONALITY ===
+  p.note("Let's understand who you are and how you work");
+
+  const role = await p.select({
+    message: "What's your role?",
+    options: [
+      { value: "senior-dev", label: "Senior Developer", hint: "experienced, autonomous" },
+      { value: "mid-dev", label: "Mid-level Developer", hint: "growing, some guidance helpful" },
+      { value: "junior-dev", label: "Junior Developer", hint: "learning, more explanation needed" },
+      { value: "founder", label: "Founder / Tech Lead", hint: "building fast, shipping matters" },
+      { value: "student", label: "Student", hint: "learning fundamentals" },
+      { value: "hobbyist", label: "Hobbyist", hint: "exploring for fun" },
+    ],
+  });
+  if (p.isCancel(role)) return handleCancel();
+
+  const claudePersonality = await p.select({
+    message: "How should Claude behave?",
+    options: [
+      { value: "pair-programmer", label: "Pair Programmer", hint: "collaborative, thinks out loud" },
+      { value: "senior-dev", label: "Senior Dev", hint: "gives direction, reviews your approach" },
+      { value: "assistant", label: "Efficient Assistant", hint: "executes tasks, minimal chatter" },
+      { value: "mentor", label: "Mentor", hint: "teaches concepts, explains why" },
+      { value: "rubber-duck", label: "Rubber Duck", hint: "helps you think, asks questions" },
+    ],
+  });
+  if (p.isCancel(claudePersonality)) return handleCancel();
+
+  // === SDLC PREFERENCES ===
+  p.note("How do you like to work through the development lifecycle?");
+
+  const planningApproach = await p.select({
+    message: "Planning approach?",
+    options: [
+      { value: "plan-first", label: "Plan first", hint: "discuss architecture before coding" },
+      { value: "iterate", label: "Iterate", hint: "rough plan, refine as we go" },
+      { value: "dive-in", label: "Dive in", hint: "start coding, figure it out" },
+    ],
+  });
+  if (p.isCancel(planningApproach)) return handleCancel();
+
+  const testingApproach = await p.select({
+    message: "Testing approach?",
+    options: [
+      { value: "tdd", label: "TDD", hint: "write tests first" },
+      { value: "test-after", label: "Test after", hint: "write tests after implementation" },
+      { value: "critical-paths", label: "Critical paths only", hint: "test important stuff" },
+      { value: "minimal", label: "Minimal", hint: "tests when necessary" },
+    ],
+  });
+  if (p.isCancel(testingApproach)) return handleCancel();
+
+  const codeReview = await p.select({
+    message: "Code review preference?",
+    options: [
+      { value: "review-before-commit", label: "Review before commit", hint: "Claude reviews changes" },
+      { value: "review-on-request", label: "On request", hint: "review when asked" },
+      { value: "self-review", label: "Self review", hint: "I review my own code" },
+    ],
+  });
+  if (p.isCancel(codeReview)) return handleCancel();
+
+  const gitWorkflow = await p.select({
+    message: "Git workflow?",
+    options: [
+      { value: "small-commits", label: "Small commits", hint: "atomic, frequent commits" },
+      { value: "feature-branches", label: "Feature branches", hint: "branch per feature, squash merge" },
+      { value: "trunk-based", label: "Trunk-based", hint: "commit to main, feature flags" },
+      { value: "flexible", label: "Flexible", hint: "depends on the project" },
+    ],
+  });
+  if (p.isCancel(gitWorkflow)) return handleCancel();
+
+  const documentationApproach = await p.select({
+    message: "Documentation approach?",
+    options: [
+      { value: "inline", label: "Inline comments", hint: "document as you code" },
+      { value: "readme-driven", label: "README driven", hint: "docs first, then code" },
+      { value: "minimal", label: "Minimal", hint: "self-documenting code" },
+      { value: "on-request", label: "On request", hint: "document when asked" },
+    ],
+  });
+  if (p.isCancel(documentationApproach)) return handleCancel();
+
+  const debuggingStyle = await p.select({
+    message: "Debugging style?",
+    options: [
+      { value: "systematic", label: "Systematic", hint: "isolate, reproduce, trace" },
+      { value: "hypothesis", label: "Hypothesis-driven", hint: "guess likely causes first" },
+      { value: "printf", label: "Printf debugging", hint: "add logs, observe behavior" },
+      { value: "whatever-works", label: "Whatever works", hint: "just fix it" },
+    ],
+  });
+  if (p.isCancel(debuggingStyle)) return handleCancel();
+
+  const refactoringPreference = await p.select({
+    message: "Refactoring preference?",
+    options: [
+      { value: "proactive", label: "Proactive", hint: "Claude suggests improvements" },
+      { value: "on-request", label: "On request", hint: "only when asked" },
+      { value: "boy-scout", label: "Boy scout rule", hint: "leave code better than found" },
+      { value: "if-broken", label: "If it ain't broke...", hint: "don't fix what works" },
+    ],
+  });
+  if (p.isCancel(refactoringPreference)) return handleCancel();
+
+  // === TECH STACK ===
+  p.note("Now let's configure your tech stack");
+
   const packageManager = await p.select({
     message: "Preferred package manager?",
     options: [
@@ -295,21 +404,133 @@ export async function setupCommand(): Promise<void> {
     ],
   };
 
+  const roleDescriptions: Record<string, string> = {
+    "senior-dev": "Senior developer - experienced and autonomous, prefers concise guidance",
+    "mid-dev": "Mid-level developer - competent but appreciates context on complex topics",
+    "junior-dev": "Junior developer - learning, benefits from more explanation and examples",
+    "founder": "Founder/Tech Lead - focused on shipping, pragmatic decisions over perfect code",
+    "student": "Student - learning fundamentals, explain concepts when relevant",
+    "hobbyist": "Hobbyist - exploring for fun, balance learning with getting things done",
+  };
+
+  const personalityDescriptions: Record<string, string[]> = {
+    "pair-programmer": [
+      "Act as a pair programmer - think out loud, collaborate on solutions",
+      "Discuss trade-offs and alternatives when relevant",
+      "Catch potential issues early, suggest improvements as we go",
+    ],
+    "senior-dev": [
+      "Act as a senior developer - give direction, review approaches",
+      "Point out potential issues and better patterns",
+      "Be opinionated when it matters, flexible when it doesn't",
+    ],
+    "assistant": [
+      "Act as an efficient assistant - execute tasks with minimal chatter",
+      "Ask clarifying questions only when truly needed",
+      "Focus on delivering what was asked",
+    ],
+    "mentor": [
+      "Act as a mentor - teach concepts, explain the 'why'",
+      "Use opportunities to share knowledge",
+      "Suggest learning resources when helpful",
+    ],
+    "rubber-duck": [
+      "Act as a rubber duck - help me think through problems",
+      "Ask probing questions rather than giving immediate answers",
+      "Help me discover solutions myself",
+    ],
+  };
+
+  const planningDescriptions: Record<string, string> = {
+    "plan-first": "Discuss architecture and approach before writing code",
+    "iterate": "Start with a rough plan, refine as we go",
+    "dive-in": "Start coding quickly, figure out structure as needed",
+  };
+
+  const testingDescriptions: Record<string, string> = {
+    "tdd": "Write tests first (TDD), then implement",
+    "test-after": "Write tests after implementation",
+    "critical-paths": "Test critical paths and edge cases",
+    "minimal": "Minimal testing - add tests when necessary",
+  };
+
+  const reviewDescriptions: Record<string, string> = {
+    "review-before-commit": "Review changes before committing - catch issues early",
+    "review-on-request": "Review code when explicitly asked",
+    "self-review": "I review my own code, no automatic reviews needed",
+  };
+
+  const gitDescriptions: Record<string, string> = {
+    "small-commits": "Small, atomic commits - easy to review and revert",
+    "feature-branches": "Feature branches with squash merges",
+    "trunk-based": "Trunk-based development with feature flags",
+    "flexible": "Flexible git workflow based on project needs",
+  };
+
+  const docDescriptions: Record<string, string> = {
+    "inline": "Document with inline comments as code is written",
+    "readme-driven": "README-driven development - docs first",
+    "minimal": "Minimal documentation - code should be self-documenting",
+    "on-request": "Add documentation when requested",
+  };
+
+  const debugDescriptions: Record<string, string> = {
+    "systematic": "Debug systematically - isolate, reproduce, trace",
+    "hypothesis": "Hypothesis-driven debugging - test likely causes first",
+    "printf": "Printf debugging - add logs and observe",
+    "whatever-works": "Whatever works to fix the issue quickly",
+  };
+
+  const refactorDescriptions: Record<string, string> = {
+    "proactive": "Proactively suggest refactoring opportunities",
+    "on-request": "Refactor only when asked",
+    "boy-scout": "Boy scout rule - leave code better than you found it",
+    "if-broken": "Don't refactor working code unless necessary",
+  };
+
   const profileContent = `---
 name: ${name}
+role: ${role}
 style: ${style}
+personality: ${claudePersonality}
 ---
 
-# Communication Preferences
+# Who I Am
+
+${roleDescriptions[role as string]}
+
+# How Claude Should Behave
+
+${personalityDescriptions[claudePersonality as string].map((s) => `- ${s}`).join("\n")}
+
+# Communication Style
 
 ${styleDescriptions[style as string].map((s) => `- ${s}`).join("\n")}
 - No emojis unless explicitly requested
 - Show code when it's clearer than explanation
 
-# Work Style
+# Development Workflow
 
-- Prefer practical solutions over theoretical
-- Match existing code patterns in the project
+## Planning
+- ${planningDescriptions[planningApproach as string]}
+
+## Testing
+- ${testingDescriptions[testingApproach as string]}
+
+## Code Review
+- ${reviewDescriptions[codeReview as string]}
+
+## Git Workflow
+- ${gitDescriptions[gitWorkflow as string]}
+
+## Documentation
+- ${docDescriptions[documentationApproach as string]}
+
+## Debugging
+- ${debugDescriptions[debuggingStyle as string]}
+
+## Refactoring
+- ${refactorDescriptions[refactoringPreference as string]}
 `;
 
   await writeFile(thinkPath(CONFIG.files.profile), profileContent);
