@@ -14,13 +14,14 @@ import { helpCommand } from "./commands/help";
 import { setupCommand } from "./commands/setup";
 import { printBanner } from "../core/banner";
 import { launchTui } from "../tui";
+import pkg from "../../package.json";
 
 const program = new Command();
 
 program
   .name("think")
   .description("Personal context manager for Claude")
-  .version("0.1.0");
+  .version(pkg.version);
 
 // Initialize ~/.think
 program
