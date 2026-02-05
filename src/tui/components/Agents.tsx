@@ -13,7 +13,11 @@ interface AgentInfo {
   path: string;
 }
 
-export function Agents() {
+interface AgentsProps {
+  height?: number;
+}
+
+export function Agents({ height = 15 }: AgentsProps) {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(true);

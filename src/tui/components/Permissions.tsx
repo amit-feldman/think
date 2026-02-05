@@ -11,7 +11,11 @@ const files: { key: PermissionFile; label: string; path: string }[] = [
   { key: "settings", label: "Settings", path: CONFIG.files.settings },
 ];
 
-export function Permissions() {
+interface PermissionsProps {
+  height?: number;
+}
+
+export function Permissions({ height = 15 }: PermissionsProps) {
   const [selected, setSelected] = useState<PermissionFile>("commands");
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);

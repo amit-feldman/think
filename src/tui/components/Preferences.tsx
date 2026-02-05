@@ -12,13 +12,19 @@ const files: { key: PreferenceFile; label: string; path: string }[] = [
   { key: "antiPatterns", label: "Anti-Patterns", path: CONFIG.files.antiPatterns },
 ];
 
-export function Preferences() {
+interface PreferencesProps {
+  height?: number;
+}
+
+export function Preferences({ height = 15 }: PreferencesProps) {
   const [selected, setSelected] = useState<PreferenceFile>("tools");
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [scroll, setScroll] = useState(0);
 
   useEffect(() => {
     loadContent();
+    setScroll(0);
   }, [selected]);
 
   async function loadContent() {
@@ -31,14 +37,24 @@ export function Preferences() {
     setLoading(false);
   }
 
+  const lines = content.split("\n");
+  const contentHeight = height - 3;
+  const maxScroll = Math.max(0, lines.length - contentHeight);
+
   useInput((input, key) => {
     if (key.leftArrow || input === "h") {
       const idx = files.findIndex((f) => f.key === selected);
-      setSelected(files[(idx - 1 + files.length) % files.length].key);
+      setSelected(files[(idx - 1 + files.length) % files.length]!.key);
     }
     if (key.rightArrow || input === "l") {
       const idx = files.findIndex((f) => f.key === selected);
-      setSelected(files[(idx + 1) % files.length].key);
+      setSelected(files[(idx + 1) % files.length]!.key);
+    }
+    if (key.upArrow || input === "k") {
+      setScroll((s) => Math.max(0, s - 1));
+    }
+    if (key.downArrow || input === "j") {
+      setScroll((s) => Math.min(maxScroll, s + 1));
     }
     if (input === "e") {
       const file = files.find((f) => f.key === selected);
@@ -53,8 +69,10 @@ export function Preferences() {
     }
   });
 
+  const visibleLines = lines.slice(scroll, scroll + contentHeight);
+
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={height}>
       <Box marginBottom={1}>
         {files.map((file) => (
           <Box key={file.key} marginRight={2}>
@@ -67,22 +85,25 @@ export function Preferences() {
             </Text>
           </Box>
         ))}
+        {maxScroll > 0 && (
+          <Text color="gray">[{scroll + 1}-{Math.min(scroll + contentHeight, lines.length)}/{lines.length}]</Text>
+        )}
       </Box>
 
-      <Box flexDirection="column" paddingLeft={1}>
+      <Box flexDirection="column" flexGrow={1}>
         {loading ? (
           <Text color="gray">Loading...</Text>
         ) : (
-          content.split("\n").map((line, i) => (
-            <Text key={i} color={line.startsWith("#") ? "cyan" : undefined}>
-              {line}
+          visibleLines.map((line, i) => (
+            <Text key={scroll + i} color={line.startsWith("#") ? "cyan" : undefined}>
+              {line || " "}
             </Text>
           ))
         )}
       </Box>
 
-      <Box marginTop={1}>
-        <Text color="gray">←/→: switch | e: edit in $EDITOR</Text>
+      <Box>
+        <Text color="gray">←/→: switch | e: edit{maxScroll > 0 ? " | ↑↓: scroll" : ""}</Text>
       </Box>
     </Box>
   );

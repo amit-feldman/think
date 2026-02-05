@@ -11,7 +11,11 @@ const files: { key: AutomationFile; label: string; path: string }[] = [
   { key: "workflows", label: "Workflows", path: CONFIG.files.workflows },
 ];
 
-export function Automation() {
+interface AutomationProps {
+  height?: number;
+}
+
+export function Automation({ height = 15 }: AutomationProps) {
   const [selected, setSelected] = useState<AutomationFile>("subagents");
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);

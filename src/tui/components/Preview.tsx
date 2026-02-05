@@ -6,13 +6,14 @@ import { CONFIG } from "../../core/config";
 
 interface PreviewProps {
   onClose: () => void;
+  height?: number;
 }
 
-export function Preview({ onClose }: PreviewProps) {
+export function Preview({ onClose, height = 20 }: PreviewProps) {
   const [content, setContent] = useState<string[]>([]);
   const [scroll, setScroll] = useState(0);
   const [loading, setLoading] = useState(true);
-  const maxLines = 20;
+  const maxLines = Math.max(5, height - 4);
 
   useEffect(() => {
     loadPreview();
@@ -54,7 +55,7 @@ export function Preview({ onClose }: PreviewProps) {
     : 100;
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="cyan" padding={1}>
+    <Box flexDirection="column" borderStyle="single" borderColor="cyan" padding={1} height={height}>
       <Box marginBottom={1}>
         <Text bold color="cyan">CLAUDE.md Preview</Text>
         <Text color="gray"> ({content.length} lines)</Text>

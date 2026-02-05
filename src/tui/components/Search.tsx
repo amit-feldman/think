@@ -7,6 +7,7 @@ import { thinkPath, CONFIG } from "../../core/config";
 
 interface SearchProps {
   onClose: () => void;
+  height?: number;
 }
 
 interface SearchResult {
@@ -26,7 +27,7 @@ const searchFiles = [
   { name: "workflows", path: CONFIG.files.workflows },
 ];
 
-export function Search({ onClose }: SearchProps) {
+export function Search({ onClose, height = 20 }: SearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selected, setSelected] = useState(0);

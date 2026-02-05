@@ -13,7 +13,11 @@ interface SkillInfo {
   path: string;
 }
 
-export function Skills() {
+interface SkillsProps {
+  height?: number;
+}
+
+export function Skills({ height = 15 }: SkillsProps) {
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
