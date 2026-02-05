@@ -1,7 +1,18 @@
 {
-  "name": "think",
+  "name": "think-cli",
   "version": "0.1.0",
-  "description": "Personal context manager for Claude",
+  "description": "Personal context manager for Claude - manage your preferences, patterns, and memory",
+  "author": "Amit Feldman",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amit-feldman/think"
+  },
+  "homepage": "https://github.com/amit-feldman/think#readme",
+  "bugs": {
+    "url": "https://github.com/amit-feldman/think/issues"
+  },
+  "keywords": ["claude", "cli", "context", "ai", "productivity", "bun"],
   "module": "src/cli/index.ts",
   "type": "module",
   "bin": {
