@@ -25,7 +25,7 @@ Personal context manager for Claude. Stop repeating yourself.
 
 ```bash
 # With bun (recommended)
-bun install -g claude-think
+bun add -g claude-think
 
 # With npm
 npm install -g claude-think
@@ -47,8 +47,8 @@ claude
 ## How it works
 
 1. Your preferences live in `~/.think/` (markdown files)
-2. `think sync` generates a Claude plugin at `~/.claude/plugins/think/`
-3. Claude Code auto-loads the plugin, so your context is always there
+2. `think sync` generates `~/.claude/CLAUDE.md`
+3. Claude Code auto-loads CLAUDE.md at session start
 
 ## Commands
 
@@ -65,6 +65,7 @@ claude
 | `think edit <file>` | Edit any config file |
 | `think allow "cmd"` | Pre-approve a command |
 | `think tree` | Preview project file tree |
+| `think project learn` | Generate CLAUDE.md for current project |
 | `think help` | Show all commands |
 
 ## What you can configure
