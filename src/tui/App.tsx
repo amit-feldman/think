@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { Navigation } from "./components/Navigation";
 import { Profile } from "./components/Profile";
@@ -13,9 +13,13 @@ import { StatusBar } from "./components/StatusBar";
 import { QuickActions } from "./components/QuickActions";
 import { Preview } from "./components/Preview";
 import { Search } from "./components/Search";
+import { ProfileSwitcher } from "./components/ProfileSwitcher";
 import { FullScreen, useTerminalSize } from "./components/FullScreen";
-import { existsSync } from "fs";
-import { CONFIG } from "../core/config";
+import { existsSync, readdirSync } from "fs";
+import { spawn } from "child_process";
+import { CONFIG, getActiveProfile } from "../core/config";
+import { switchProfile } from "../core/profiles";
+import { generatePlugin } from "../core/generator";
 
 // Note: "help" is handled as a modal, not a navigation section
 type Section =
@@ -27,7 +31,7 @@ type Section =
   | "agents"
   | "automation";
 
-type Modal = "none" | "help" | "actions" | "preview" | "search";
+type Modal = "none" | "help" | "actions" | "preview" | "search" | "profiles";
 
 export function App() {
   const { exit } = useApp();
@@ -36,6 +40,8 @@ export function App() {
   const [modal, setModal] = useState<Modal>("none");
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [initialized, setInitialized] = useState(false);
+  const [activeProfile, setActiveProfile] = useState<string>(getActiveProfile());
+  const isExitingRef = useRef(false);
 
   const isNarrow = width < 80;
 
@@ -47,7 +53,19 @@ export function App() {
   const contentHeight = Math.max(5, height - headerHeight - 9);
 
   useEffect(() => {
-    setInitialized(existsSync(CONFIG.thinkDir));
+    // Check if ~/.think exists and has profiles
+    if (!existsSync(CONFIG.thinkDir)) {
+      setInitialized(false);
+      return;
+    }
+    if (!existsSync(CONFIG.profilesDir)) {
+      setInitialized(false);
+      return;
+    }
+    // Check if at least one profile exists
+    const profiles = readdirSync(CONFIG.profilesDir, { withFileTypes: true })
+      .filter(e => e.isDirectory());
+    setInitialized(profiles.length > 0);
   }, []);
 
   useInput((input, key) => {
@@ -55,6 +73,7 @@ export function App() {
     if (modal !== "none") return;
 
     if (input === "q" || (key.ctrl && input === "c")) {
+      isExitingRef.current = true;
       exit();
     }
     if (input === "?") {
@@ -72,11 +91,48 @@ export function App() {
     if (input === "/" || (key.ctrl && input === "f")) {
       setModal("search");
     }
+    if (input === "P") {
+      setModal("profiles");
+    }
   });
 
   function handleMessage(msg: string) {
     setStatusMessage(msg);
     setTimeout(() => setStatusMessage(undefined), 3000);
+  }
+
+  async function handleProfileSwitch(name: string) {
+    if (name === activeProfile) {
+      setModal("none");
+      return;
+    }
+    try {
+      switchProfile(name);
+      setActiveProfile(name);
+      handleMessage(`Switched to profile "${name}"`);
+      await generatePlugin();
+      handleMessage(`Switched to profile "${name}" and synced`);
+    } catch (e) {
+      handleMessage(`Failed to switch profile`);
+    }
+    setModal("none");
+  }
+
+  function handleSetup() {
+    // Exit TUI and run setup command
+    isExitingRef.current = true;
+    exit();
+    // Spawn setup in the same terminal after TUI exits
+    setTimeout(() => {
+      spawn("think", ["setup"], {
+        stdio: "inherit",
+      });
+    }, 100);
+  }
+
+  // Don't render anything while exiting to avoid flash
+  if (isExitingRef.current) {
+    return null;
   }
 
   if (!initialized) {
@@ -85,16 +141,16 @@ export function App() {
         <Box flexDirection="column" padding={1} justifyContent="center" alignItems="center" height="100%">
           <Box
             borderStyle="round"
-            borderColor="red"
+            borderColor="yellow"
             paddingX={2}
             paddingY={1}
             flexDirection="column"
           >
-            <Text color="red" bold>
-              ~/.think not found
+            <Text color="yellow" bold>
+              No profiles found
             </Text>
             <Box marginTop={1}>
-              <Text color="gray">Run `think init` first, then launch the TUI.</Text>
+              <Text color="gray">Run `think init` to get started.</Text>
             </Box>
           </Box>
         </Box>
@@ -147,31 +203,47 @@ export function App() {
     );
   }
 
+  if (modal === "profiles") {
+    return (
+      <FullScreen>
+        <Box flexDirection="column" padding={1}>
+          <Header width={width} activeProfile={activeProfile} />
+          <ProfileSwitcher
+            onClose={() => setModal("none")}
+            onSwitch={handleProfileSwitch}
+            onSetup={handleSetup}
+          />
+        </Box>
+      </FullScreen>
+    );
+  }
+
   const renderSection = () => {
+    // Use activeProfile as key to force remount when profile changes
     switch (section) {
       case "profile":
-        return <Profile height={contentHeight} />;
+        return <Profile key={activeProfile} height={contentHeight} />;
       case "preferences":
-        return <Preferences height={contentHeight} />;
+        return <Preferences key={activeProfile} height={contentHeight} />;
       case "memory":
-        return <Memory height={contentHeight} />;
+        return <Memory key={activeProfile} height={contentHeight} />;
       case "permissions":
-        return <Permissions height={contentHeight} />;
+        return <Permissions key={activeProfile} height={contentHeight} />;
       case "skills":
-        return <Skills height={contentHeight} />;
+        return <Skills key={activeProfile} height={contentHeight} />;
       case "agents":
-        return <Agents height={contentHeight} />;
+        return <Agents key={activeProfile} height={contentHeight} />;
       case "automation":
-        return <Automation height={contentHeight} />;
+        return <Automation key={activeProfile} height={contentHeight} />;
       default:
-        return <Profile height={contentHeight} />;
+        return <Profile key={activeProfile} height={contentHeight} />;
     }
   };
 
   return (
     <FullScreen>
       <Box flexDirection="column" padding={1} height="100%">
-        <Header width={width} />
+        <Header width={width} activeProfile={activeProfile} />
 
         <Navigation currentSection={section} onSectionChange={setSection} />
 
@@ -188,14 +260,14 @@ export function App() {
         </Box>
 
         <Box marginTop={1}>
-          <StatusBar message={statusMessage} />
+          <StatusBar key={activeProfile} message={statusMessage} />
         </Box>
 
         <Box>
           <Text color="gray">
             {isNarrow
-              ? "Tab:nav ↑↓:scroll a:act p:prev /:search ?:help q:quit"
-              : "Tab: sections | ↑↓/jk: scroll | a: actions | p: preview | /: search | ?: help | q: quit"}
+              ? "Tab:nav ↑↓:scroll a:act p:prev P:profile /:search ?:help q:quit"
+              : "Tab: sections | ↑↓/jk: scroll | a: actions | p: preview | P: profile | /: search | ?: help | q: quit"}
           </Text>
         </Box>
       </Box>
@@ -203,7 +275,11 @@ export function App() {
   );
 }
 
-function Header({ width, showBanner = true }: { width: number; showBanner?: boolean }) {
+function Header({ width, showBanner = true, activeProfile }: { width: number; showBanner?: boolean; activeProfile?: string }) {
+  const profileBadge = activeProfile && activeProfile !== "default" ? (
+    <Text color="cyan"> [{activeProfile}]</Text>
+  ) : null;
+
   // Double-line box banner
   if (width >= 44 && showBanner) {
     return (
@@ -212,6 +288,7 @@ function Header({ width, showBanner = true }: { width: number; showBanner?: bool
         <Text color="green">╔═══════════════════════════════════════╗</Text>
         <Text color="green">║  <Text bold>THINK</Text> · <Text color="gray">Personal Context for Claude</Text>  ║</Text>
         <Text color="green">╚═══════════════════════════════════════╝</Text>
+        {profileBadge && <Box><Text color="gray">Profile:</Text>{profileBadge}</Box>}
       </Box>
     );
   }
@@ -221,6 +298,7 @@ function Header({ width, showBanner = true }: { width: number; showBanner?: bool
     return (
       <Box marginBottom={1}>
         <Text color="green" bold>think</Text>
+        {profileBadge}
       </Box>
     );
   }
@@ -229,6 +307,7 @@ function Header({ width, showBanner = true }: { width: number; showBanner?: bool
     <Box marginBottom={1}>
       <Text color="green" bold>think</Text>
       <Text color="gray"> · Personal Context for Claude</Text>
+      {profileBadge}
     </Box>
   );
 }

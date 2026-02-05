@@ -5,11 +5,16 @@ import { syncCommand } from "./commands/sync";
 import { learnCommand } from "./commands/learn";
 import { statusCommand } from "./commands/status";
 import { profileCommand } from "./commands/profile";
+import {
+  profileListCommand,
+  profileUseCommand,
+  profileCreateCommand,
+  profileDeleteCommand,
+} from "./commands/profile-commands";
 import { editCommand } from "./commands/edit";
 import { allowCommand } from "./commands/allow";
 import { reviewCommand } from "./commands/review";
 import { treeCommand } from "./commands/tree";
-import { projectInitCommand } from "./commands/project";
 import { projectLearnCommand } from "./commands/project-learn";
 import { helpCommand } from "./commands/help";
 import { setupCommand } from "./commands/setup";
@@ -50,11 +55,39 @@ program
   .description("Show current think status")
   .action(statusCommand);
 
-// Edit profile
-program
+// Profile management commands
+const profileCmd = program
   .command("profile")
+  .description("Manage profiles");
+
+profileCmd
+  .command("list")
+  .description("List all profiles")
+  .action(profileListCommand);
+
+profileCmd
+  .command("use <name>")
+  .description("Switch to a profile")
+  .action(profileUseCommand);
+
+profileCmd
+  .command("create <name>")
+  .description("Create a new profile")
+  .option("--from <profile>", "Copy from existing profile")
+  .action(profileCreateCommand);
+
+profileCmd
+  .command("delete <name>")
+  .description("Delete a profile")
+  .action(profileDeleteCommand);
+
+profileCmd
+  .command("edit")
   .description("Open profile.md in $EDITOR")
   .action(profileCommand);
+
+// Also allow `think profile` with no subcommand to edit
+profileCmd.action(profileCommand);
 
 // Edit any file
 program
@@ -81,20 +114,11 @@ program
   .description("Preview file tree for current directory")
   .action(treeCommand);
 
-// Project commands
-const projectCmd = program
+// Project command - generate project CLAUDE.md
+program
   .command("project")
-  .description("Project-specific commands");
-
-projectCmd
-  .command("init")
-  .description("Initialize .think.yaml for current project")
-  .option("-f, --force", "Overwrite existing config")
-  .action(projectInitCommand);
-
-projectCmd
-  .command("learn")
-  .description("Generate CLAUDE.md with project structure")
+  .description("Generate CLAUDE.md for current project")
+  .alias("project learn")
   .option("-f, --force", "Overwrite existing CLAUDE.md")
   .action(projectLearnCommand);
 

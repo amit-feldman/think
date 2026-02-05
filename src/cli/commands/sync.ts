@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
+import { readFile } from "fs/promises";
 import chalk from "chalk";
-import { CONFIG } from "../../core/config";
+import { CONFIG, getActiveProfile } from "../../core/config";
 import { generatePlugin } from "../../core/generator";
 
 /**
@@ -13,18 +14,30 @@ export async function syncCommand(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(chalk.blue("Syncing ~/.think to ~/.claude/CLAUDE.md..."));
+  const profile = getActiveProfile();
+  console.log(chalk.blue(`Syncing profile "${chalk.cyan(profile)}" to ~/.claude/CLAUDE.md...`));
 
   try {
     await generatePlugin();
 
+    // Calculate token estimate
+    const content = await readFile(CONFIG.claudeMdPath, "utf-8");
+    const tokens = Math.ceil(content.length / 4);
+
     console.log(chalk.green("Done!"));
     console.log();
     console.log(`Generated: ${chalk.cyan(CONFIG.claudeMdPath)}`);
+    console.log(`Size: ~${chalk.magenta(formatTokens(tokens))} tokens`);
     console.log();
     console.log("Claude will automatically load your context in new sessions.");
   } catch (error) {
     console.error(chalk.red("Failed to sync:"), error);
     process.exit(1);
   }
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return tokens.toString();
+  if (tokens < 10000) return `${(tokens / 1000).toFixed(1)}k`;
+  return `${Math.round(tokens / 1000)}k`;
 }

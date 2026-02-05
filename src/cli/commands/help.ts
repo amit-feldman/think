@@ -25,7 +25,7 @@ export async function helpCommand(): Promise<void> {
     { cmd: "think allow <cmd>", desc: "Add command to allowed list" },
     { cmd: "", desc: "" },
     { cmd: "think tree", desc: "Preview file tree for current directory" },
-    { cmd: "think project init", desc: "Create .think.yaml for project" },
+    { cmd: "think project learn", desc: "Generate CLAUDE.md for project" },
   ];
 
   for (const { cmd, desc } of commands) {
@@ -57,8 +57,7 @@ export async function helpCommand(): Promise<void> {
   console.log();
   console.log(chalk.bold("Files:\n"));
   console.log(`  ${chalk.dim("Source:")}   ~/.think/`);
-  console.log(`  ${chalk.dim("Plugin:")}   ~/.claude/plugins/think/`);
-  console.log(`  ${chalk.dim("Project:")}  .think.yaml (optional)`);
+  console.log(`  ${chalk.dim("Output:")}   ~/.claude/CLAUDE.md`);
 
   console.log();
 }

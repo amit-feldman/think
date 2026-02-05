@@ -1,14 +1,10 @@
-import { existsSync } from "fs";
-import { readFile } from "fs/promises";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import matter from "gray-matter";
 
 export interface ProjectInfo {
   type: ProjectType;
   name: string;
   root: string;
-  configFile?: string;
-  customConfig?: ThinkProjectConfig;
 }
 
 export type ProjectType =
@@ -21,14 +17,6 @@ export type ProjectType =
   | "java"
   | "ruby"
   | "unknown";
-
-export interface ThinkProjectConfig {
-  type?: ProjectType;
-  name?: string;
-  includes?: string[];
-  excludes?: string[];
-  annotations?: Record<string, string>;
-}
 
 const PROJECT_MARKERS: Record<ProjectType, string[]> = {
   bun: ["bun.lockb", "bunfig.toml"],
@@ -48,27 +36,6 @@ const PROJECT_MARKERS: Record<ProjectType, string[]> = {
 export async function detectProject(dir: string): Promise<ProjectInfo> {
   const root = dir;
 
-  // Check for .think.yaml first
-  const thinkConfigPath = join(root, ".think.yaml");
-  let customConfig: ThinkProjectConfig | undefined;
-
-  if (existsSync(thinkConfigPath)) {
-    const content = await readFile(thinkConfigPath, "utf-8");
-    const parsed = matter(content);
-    customConfig = parsed.data as ThinkProjectConfig;
-  }
-
-  // If custom config specifies type, use it
-  if (customConfig?.type) {
-    return {
-      type: customConfig.type,
-      name: customConfig.name || detectProjectName(root),
-      root,
-      configFile: thinkConfigPath,
-      customConfig,
-    };
-  }
-
   // Auto-detect based on marker files
   // Check Bun first (more specific than Node)
   for (const [type, markers] of Object.entries(PROJECT_MARKERS)) {
@@ -76,10 +43,8 @@ export async function detectProject(dir: string): Promise<ProjectInfo> {
       if (existsSync(join(root, marker))) {
         return {
           type: type as ProjectType,
-          name: customConfig?.name || detectProjectName(root),
+          name: detectProjectName(root),
           root,
-          configFile: existsSync(thinkConfigPath) ? thinkConfigPath : undefined,
-          customConfig,
         };
       }
     }
@@ -87,10 +52,8 @@ export async function detectProject(dir: string): Promise<ProjectInfo> {
 
   return {
     type: "unknown",
-    name: customConfig?.name || detectProjectName(root),
+    name: detectProjectName(root),
     root,
-    configFile: existsSync(thinkConfigPath) ? thinkConfigPath : undefined,
-    customConfig,
   };
 }
 
@@ -99,7 +62,7 @@ function detectProjectName(root: string): string {
   const pkgPath = join(root, "package.json");
   if (existsSync(pkgPath)) {
     try {
-      const pkg = require(pkgPath);
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
       if (pkg.name) return pkg.name;
     } catch {}
   }
@@ -109,7 +72,7 @@ function detectProjectName(root: string): string {
   if (existsSync(cargoPath)) {
     // Simple parse - just look for name =
     try {
-      const content = require("fs").readFileSync(cargoPath, "utf-8");
+      const content = readFileSync(cargoPath, "utf-8");
       const match = content.match(/name\s*=\s*"([^"]+)"/);
       if (match) return match[1];
     } catch {}

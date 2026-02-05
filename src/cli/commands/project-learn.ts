@@ -1,6 +1,6 @@
-import { existsSync } from "fs";
-import { writeFile, readFile, readdir, stat } from "fs/promises";
-import { join, basename } from "path";
+import { existsSync, readFileSync } from "fs";
+import { writeFile, readFile, readdir } from "fs/promises";
+import { join } from "path";
 import chalk from "chalk";
 import { detectProject, ProjectType } from "../../core/project-detect";
 
@@ -180,7 +180,7 @@ function findEntryPoints(dir: string, type: ProjectType): string[] {
   const pkgPath = join(dir, "package.json");
   if (existsSync(pkgPath)) {
     try {
-      const pkg = JSON.parse(require("fs").readFileSync(pkgPath, "utf-8"));
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
       if (pkg.bin) {
         const bins = typeof pkg.bin === "string" ? [pkg.bin] : Object.values(pkg.bin);
         for (const bin of bins as string[]) {

@@ -1,7 +1,8 @@
 import { existsSync } from "fs";
 import { spawn } from "child_process";
 import chalk from "chalk";
-import { CONFIG, thinkPath } from "../../core/config";
+import { CONFIG, thinkPath, profilePath } from "../../core/config";
+import { isPathWithin } from "../../core/security";
 
 /**
  * Open any ~/.think file in $EDITOR
@@ -29,6 +30,12 @@ export async function editCommand(file: string): Promise<void> {
 
   const resolvedFile = shortcuts[file] || file;
   const filePath = thinkPath(resolvedFile);
+
+  // Security: Validate path stays within the profile directory
+  if (!isPathWithin(profilePath(), filePath)) {
+    console.log(chalk.red(`Invalid path: "${file}" is outside the profile directory`));
+    process.exit(1);
+  }
 
   if (!existsSync(filePath)) {
     console.log(chalk.red(`File not found: ${filePath}`));

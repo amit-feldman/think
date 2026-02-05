@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
-import { readFile, readdir } from "fs/promises";
+import { readFile, readdir, stat } from "fs/promises";
 import chalk from "chalk";
-import { CONFIG, thinkPath, pluginPath } from "../../core/config";
+import { CONFIG, thinkPath, getActiveProfile } from "../../core/config";
 import { extractLearnings } from "../../core/dedup";
 import { printBanner } from "../../core/banner";
 
@@ -19,11 +19,17 @@ export async function statusCommand(): Promise<void> {
 
   console.log(chalk.green("✓ ~/.think initialized"));
 
-  // Check plugin
-  if (existsSync(CONFIG.pluginDir)) {
-    console.log(chalk.green("✓ Plugin generated at ~/.claude/plugins/think"));
+  // Show active profile
+  const profile = getActiveProfile();
+  console.log(`Profile: ${chalk.cyan(profile)}`);
+
+  // Check CLAUDE.md and show token estimate
+  if (existsSync(CONFIG.claudeMdPath)) {
+    const content = await readFile(CONFIG.claudeMdPath, "utf-8");
+    const tokens = Math.ceil(content.length / 4);
+    console.log(chalk.green(`✓ CLAUDE.md generated (~${formatTokens(tokens)} tokens)`));
   } else {
-    console.log(chalk.yellow("○ Plugin not generated. Run `think sync`"));
+    console.log(chalk.yellow("○ CLAUDE.md not generated. Run `think sync`"));
   }
 
   console.log();
@@ -63,4 +69,10 @@ export async function statusCommand(): Promise<void> {
   }
 
   console.log();
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return tokens.toString();
+  if (tokens < 10000) return `${(tokens / 1000).toFixed(1)}k`;
+  return `${Math.round(tokens / 1000)}k`;
 }

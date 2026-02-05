@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-02-05
+
+### Added
+- **Multi-profile support** - switch between different configurations (work, personal, etc.)
+  - `think profile list` - list all profiles with active indicator
+  - `think profile use <name>` - switch to a profile (auto-syncs)
+  - `think profile create <name> [--from <profile>]` - create new profile
+  - `think profile delete <name>` - delete with confirmation
+- TUI profile switcher (press `P`) - switch profiles without leaving the app
+- Active profile shown in TUI header
+- **Inline edit/delete in Memory section**
+  - Arrow keys to select items
+  - `Enter` to edit inline
+  - `d` to delete with confirmation
+  - `e` still opens $EDITOR for bulk edits
+### Changed
+- Directory structure now uses `~/.think/profiles/<name>/` for each profile
+- Sync command shows which profile is being synced
+
 ## [0.3.2] - 2025-02-05
 
 ### Added

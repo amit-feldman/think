@@ -1,8 +1,9 @@
-import { mkdir, copyFile, readdir } from "fs/promises";
+import { mkdir, copyFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join, dirname } from "path";
 import chalk from "chalk";
-import { CONFIG, thinkPath } from "../../core/config";
+import { CONFIG, profileFilePath } from "../../core/config";
+import { ensureProfilesStructure } from "../../core/profiles";
 
 const TEMPLATE_DIR = join(dirname(dirname(dirname(__dirname))), "src", "templates");
 
@@ -13,31 +14,35 @@ export async function initCommand(options: { force?: boolean }): Promise<void> {
   const { force } = options;
 
   // Check if already initialized
-  if (existsSync(CONFIG.thinkDir) && !force) {
-    console.log(chalk.yellow(`~/.think already exists. Use --force to reinitialize.`));
+  if (existsSync(CONFIG.profilesDir) && !force) {
+    console.log(chalk.yellow(`~/.think already initialized. Use --force to reinitialize.`));
     return;
   }
 
   console.log(chalk.blue("Initializing ~/.think..."));
 
-  // Create directory structure
+  // Ensure base structure exists
+  await mkdir(CONFIG.thinkDir, { recursive: true });
+  ensureProfilesStructure();
+
+  // Create directory structure in default profile
+  const profileRoot = profileFilePath(CONFIG.defaultProfile);
   const dirs = [
-    CONFIG.thinkDir,
-    thinkPath(CONFIG.dirs.preferences),
-    thinkPath(CONFIG.dirs.permissions),
-    thinkPath(CONFIG.dirs.skills),
-    thinkPath(CONFIG.dirs.agents),
-    thinkPath(CONFIG.dirs.memory),
-    thinkPath(CONFIG.dirs.automation),
-    thinkPath(CONFIG.dirs.templates),
-    thinkPath(CONFIG.dirs.projects),
+    profileRoot,
+    join(profileRoot, CONFIG.dirs.preferences),
+    join(profileRoot, CONFIG.dirs.permissions),
+    join(profileRoot, CONFIG.dirs.skills),
+    join(profileRoot, CONFIG.dirs.agents),
+    join(profileRoot, CONFIG.dirs.memory),
+    join(profileRoot, CONFIG.dirs.automation),
+    join(profileRoot, CONFIG.dirs.templates),
   ];
 
   for (const dir of dirs) {
     await mkdir(dir, { recursive: true });
   }
 
-  // Copy templates
+  // Copy templates to default profile
   const templateMap: Record<string, string> = {
     "profile.md": CONFIG.files.profile,
     "tools.md": CONFIG.files.tools,
@@ -55,7 +60,7 @@ export async function initCommand(options: { force?: boolean }): Promise<void> {
 
   for (const [template, dest] of Object.entries(templateMap)) {
     const srcPath = join(TEMPLATE_DIR, template);
-    const destPath = thinkPath(dest);
+    const destPath = profileFilePath(CONFIG.defaultProfile, dest);
 
     // Only copy if destination doesn't exist (unless force)
     if (!existsSync(destPath) || force) {
@@ -70,7 +75,9 @@ export async function initCommand(options: { force?: boolean }): Promise<void> {
   console.log(chalk.green("Done! Your ~/.think directory is ready."));
   console.log();
   console.log("Next steps:");
-  console.log(`  1. Edit ${chalk.cyan("~/.think/profile.md")} with your preferences`);
-  console.log(`  2. Run ${chalk.cyan("think sync")} to generate the Claude plugin`);
+  console.log(`  1. Run ${chalk.cyan("think setup")} to configure your profile`);
+  console.log(`  2. Run ${chalk.cyan("think sync")} to generate CLAUDE.md`);
   console.log(`  3. Start using Claude with your personal context!`);
+  console.log();
+  console.log(chalk.gray(`Profile: default (at ~/.think/profiles/default/)`));
 }

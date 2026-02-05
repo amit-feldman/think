@@ -300,16 +300,16 @@ export async function setupCommand(): Promise<void> {
   });
   if (p.isCancel(infrastructure)) return handleCancel();
 
-  const monorepo = await p.select({
+  const monorepo = await p.multiselect({
     message: "Monorepo tooling?",
     options: [
-      { value: "none", label: "None / Single repo" },
       { value: "Turborepo", label: "Turborepo" },
       { value: "Bun workspaces", label: "Bun workspaces" },
       { value: "Nx", label: "Nx" },
       { value: "pnpm workspaces", label: "pnpm workspaces" },
       { value: "Lerna", label: "Lerna" },
     ],
+    required: false,
   });
   if (p.isCancel(monorepo)) return handleCancel();
 
@@ -615,10 +615,10 @@ ${(infrastructure as string[]).map((i) => `- ${i}`).join("\n")}`);
   }
 
   // Monorepo
-  if (monorepo !== "none") {
+  if ((monorepo as string[]).length > 0) {
     toolsSections.push(`
 ## Monorepo
-- ${monorepo}`);
+${(monorepo as string[]).map((m) => `- ${m}`).join("\n")}`);
   }
 
   // Testing

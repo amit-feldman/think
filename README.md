@@ -46,9 +46,23 @@ claude
 
 ## How it works
 
-1. Your preferences live in `~/.think/` (markdown files)
-2. `think sync` generates `~/.claude/CLAUDE.md`
+1. Your preferences live in `~/.think/profiles/<name>/` (markdown files)
+2. `think sync` generates `~/.claude/CLAUDE.md` from active profile
 3. Claude Code auto-loads CLAUDE.md at session start
+
+## Profiles
+
+Switch between different configurations for work, personal projects, or clients:
+
+```bash
+think profile list              # See all profiles
+think profile create work       # Create new profile
+think profile create client --from work  # Copy from existing
+think profile use work          # Switch (auto-syncs)
+think profile delete old        # Remove a profile
+```
+
+Press `P` in the TUI to switch profiles interactively.
 
 ## Commands
 
@@ -61,12 +75,34 @@ claude
 | `think status` | Show current status |
 | `think learn "..."` | Add a learning |
 | `think review` | Review Claude's suggestions |
-| `think profile` | Edit your profile |
+| `think profile list` | List all profiles |
+| `think profile use <name>` | Switch to a profile |
+| `think profile create <name>` | Create new profile |
+| `think profile delete <name>` | Delete a profile |
+| `think profile edit` | Edit profile.md |
 | `think edit <file>` | Edit any config file |
 | `think allow "cmd"` | Pre-approve a command |
 | `think tree` | Preview project file tree |
 | `think project learn` | Generate CLAUDE.md for current project |
 | `think help` | Show all commands |
+
+## TUI
+
+Run `think` to launch the fullscreen TUI:
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Switch sections |
+| `↑↓` / `jk` | Navigate / scroll |
+| `Enter` | Edit selected item |
+| `d` | Delete selected item |
+| `a` | Quick actions (sync, learn, search) |
+| `p` | Preview CLAUDE.md |
+| `P` | Switch profile |
+| `/` | Search all files |
+| `e` | Open in $EDITOR |
+| `?` | Help |
+| `q` | Quit |
 
 ## What you can configure
 

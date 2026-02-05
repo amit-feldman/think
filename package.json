@@ -1,6 +1,6 @@
 {
   "name": "claude-think",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Personal context manager for Claude - manage your preferences, patterns, and memory",
   "author": "Amit Feldman",
   "license": "MIT",
