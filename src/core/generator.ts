@@ -195,29 +195,49 @@ async function copyDirectory(src: string, dest: string): Promise<void> {
 }
 
 async function registerPlugin(): Promise<void> {
-  const settingsPath = join(homedir(), ".claude", "settings.json");
+  const claudeDir = join(homedir(), ".claude");
+  const settingsPath = join(claudeDir, "settings.json");
+  const installedPluginsPath = join(claudeDir, "plugins", "installed_plugins.json");
 
+  // 1. Update settings.json to enable the plugin
   let settings: Record<string, unknown> = {};
-
-  // Read existing settings if they exist
   if (existsSync(settingsPath)) {
     try {
       const content = await readFile(settingsPath, "utf-8");
       settings = JSON.parse(content);
     } catch {
-      // If parse fails, start fresh
       settings = {};
     }
   }
 
-  // Ensure enabledPlugins exists
   if (!settings.enabledPlugins) {
     settings.enabledPlugins = {};
   }
+  (settings.enabledPlugins as Record<string, boolean>)["think@local"] = true;
 
-  // Add think plugin (local plugins don't need @marketplace suffix)
-  (settings.enabledPlugins as Record<string, boolean>)["think"] = true;
-
-  // Write updated settings
   await writeFile(settingsPath, JSON.stringify(settings, null, 2));
+
+  // 2. Update installed_plugins.json to register the plugin
+  let installedPlugins: Record<string, unknown> = { version: 2, plugins: {} };
+  if (existsSync(installedPluginsPath)) {
+    try {
+      const content = await readFile(installedPluginsPath, "utf-8");
+      installedPlugins = JSON.parse(content);
+    } catch {
+      installedPlugins = { version: 2, plugins: {} };
+    }
+  }
+
+  const plugins = installedPlugins.plugins as Record<string, unknown[]>;
+  plugins["think@local"] = [
+    {
+      scope: "user",
+      installPath: CONFIG.pluginDir,
+      version: "local",
+      installedAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+    },
+  ];
+
+  await writeFile(installedPluginsPath, JSON.stringify(installedPlugins, null, 2));
 }
