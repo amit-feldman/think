@@ -1,0 +1,220 @@
+import { writeFile, readFile } from "fs/promises";
+import { existsSync } from "fs";
+import * as readline from "readline";
+import chalk from "chalk";
+import { CONFIG, thinkPath } from "../../core/config";
+import { printBanner } from "../../core/banner";
+import { syncCommand } from "./sync";
+
+interface SetupAnswers {
+  name: string;
+  style: "direct" | "conversational" | "detailed";
+  packageManager: "bun" | "pnpm" | "npm" | "yarn";
+  languages: string[];
+  editor: string;
+  avoidAll: boolean;
+}
+
+/**
+ * Interactive profile setup wizard
+ */
+export async function setupCommand(): Promise<void> {
+  if (!existsSync(CONFIG.thinkDir)) {
+    console.log(chalk.red("~/.think not found. Run `think init` first."));
+    process.exit(1);
+  }
+
+  printBanner();
+  console.log(chalk.bold("Profile Setup\n"));
+  console.log(chalk.dim("Let's configure your preferences.\n"));
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const question = (prompt: string): Promise<string> => {
+    return new Promise((resolve) => {
+      rl.question(prompt, resolve);
+    });
+  };
+
+  const select = async (
+    prompt: string,
+    options: { key: string; label: string }[]
+  ): Promise<string> => {
+    console.log(chalk.cyan(prompt));
+    options.forEach((opt, i) => {
+      console.log(`  ${chalk.green(i + 1)}) ${opt.label}`);
+    });
+    const answer = await question(chalk.dim("Enter number: "));
+    const idx = parseInt(answer) - 1;
+    if (idx >= 0 && idx < options.length) {
+      return options[idx].key;
+    }
+    return options[0].key;
+  };
+
+  const multiSelect = async (
+    prompt: string,
+    options: { key: string; label: string }[]
+  ): Promise<string[]> => {
+    console.log(chalk.cyan(prompt));
+    options.forEach((opt, i) => {
+      console.log(`  ${chalk.green(i + 1)}) ${opt.label}`);
+    });
+    const answer = await question(chalk.dim("Enter numbers (comma-separated): "));
+    const indices = answer.split(",").map((s) => parseInt(s.trim()) - 1);
+    return indices
+      .filter((i) => i >= 0 && i < options.length)
+      .map((i) => options[i].key);
+  };
+
+  try {
+    // Name
+    const name = await question(chalk.cyan("What's your name? "));
+    console.log();
+
+    // Communication style
+    const style = await select("What communication style do you prefer?", [
+      { key: "direct", label: "Direct & minimal - no fluff, just answers" },
+      { key: "conversational", label: "Conversational - friendly but efficient" },
+      { key: "detailed", label: "Detailed - thorough explanations" },
+    ]);
+    console.log();
+
+    // Package manager
+    const packageManager = await select("Preferred package manager?", [
+      { key: "bun", label: "bun" },
+      { key: "pnpm", label: "pnpm" },
+      { key: "npm", label: "npm" },
+      { key: "yarn", label: "yarn" },
+    ]);
+    console.log();
+
+    // Languages
+    const languages = await multiSelect("Primary programming languages?", [
+      { key: "TypeScript", label: "TypeScript" },
+      { key: "JavaScript", label: "JavaScript" },
+      { key: "Python", label: "Python" },
+      { key: "Rust", label: "Rust" },
+      { key: "Go", label: "Go" },
+    ]);
+    console.log();
+
+    // Editor
+    const editor = await select("Primary editor?", [
+      { key: "Zed", label: "Zed" },
+      { key: "VS Code", label: "VS Code" },
+      { key: "Cursor", label: "Cursor" },
+      { key: "Neovim", label: "Neovim" },
+    ]);
+    console.log();
+
+    // Avoid patterns
+    const avoidAnswer = await select("What should Claude avoid?", [
+      { key: "all", label: "All: over-engineering, verbose explanations, extra features" },
+      { key: "some", label: "Just over-engineering" },
+      { key: "none", label: "No specific restrictions" },
+    ]);
+    console.log();
+
+    rl.close();
+
+    // Generate profile
+    const styleDescriptions: Record<string, string[]> = {
+      direct: [
+        "Be direct and minimal - no fluff, just answers and code",
+        "Skip lengthy reasoning unless asked",
+        "Don't explain obvious things",
+      ],
+      conversational: [
+        "Be friendly but efficient",
+        "Brief explanations when helpful",
+        "Keep a conversational tone",
+      ],
+      detailed: [
+        "Provide thorough explanations",
+        "Include context and reasoning",
+        "Explain trade-offs and alternatives",
+      ],
+    };
+
+    const profileContent = `---
+name: ${name}
+style: ${style}
+---
+
+# Communication Preferences
+
+${styleDescriptions[style].map((s) => `- ${s}`).join("\n")}
+- No emojis unless explicitly requested
+- Show code when it's clearer than explanation
+
+# Work Style
+
+- Prefer practical solutions over theoretical
+- Match existing code patterns in the project
+`;
+
+    await writeFile(thinkPath(CONFIG.files.profile), profileContent);
+
+    // Generate tools preferences
+    const toolsContent = `# Tool Preferences
+
+## Package Manager
+- Use ${packageManager}${packageManager !== "npm" ? " (not npm)" : ""}
+
+## Languages
+${languages.map((l) => `- ${l}`).join("\n")}
+
+## Editor
+- Primary: ${editor}
+
+## Runtime
+${packageManager === "bun" ? "- Prefer Bun over Node.js when possible" : "- Node.js"}
+`;
+
+    await writeFile(thinkPath(CONFIG.files.tools), toolsContent);
+
+    // Generate anti-patterns if selected
+    if (avoidAnswer === "all") {
+      const antiContent = `# Anti-Patterns to Avoid
+
+## Code Style
+- Don't add comments for obvious code
+- Don't add type annotations that can be inferred
+- Don't create abstractions for one-time use
+
+## Architecture
+- Don't over-engineer solutions
+- Don't add features that weren't requested
+- Don't create unnecessary indirection
+
+## Communication
+- Don't explain obvious things
+- Don't repeat back what was just said
+- Don't pad responses with unnecessary context
+`;
+      await writeFile(thinkPath(CONFIG.files.antiPatterns), antiContent);
+    }
+
+    console.log(chalk.green("Profile created!\n"));
+
+    // Sync
+    await syncCommand();
+
+    console.log();
+    console.log(chalk.bold("Your profile is ready."));
+    console.log(chalk.dim("Start a new Claude session to use your context."));
+    console.log();
+    console.log("To customize further:");
+    console.log(`  ${chalk.cyan("think edit profile")}    Edit your profile`);
+    console.log(`  ${chalk.cyan("think edit patterns")}   Add coding patterns`);
+    console.log(`  ${chalk.cyan("think learn \"...\"")}    Add learnings over time`);
+
+  } catch (error) {
+    rl.close();
+    throw error;
+  }
+}

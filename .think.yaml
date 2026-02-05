@@ -1,0 +1,30 @@
+# Think Project Configuration
+# This file customizes how 'think' generates context for this project.
+
+# Project type (auto-detected: node)
+# Uncomment to override: type: node
+
+# Project name (auto-detected: think)
+# name: think
+
+# Additional patterns to exclude from file tree
+# excludes:
+#   - "*.log"
+#   - "tmp/"
+
+# Additional patterns to include (overrides excludes)
+# includes:
+#   - "important.log"
+
+# Custom file annotations
+# annotations:
+#   src/main.ts: "application entry point"
+#   src/config.ts: "configuration loader"
+
+# Project-specific context for Claude
+# (This content will be included in the generated CLAUDE.md)
+---
+
+# Project Context
+
+Add any project-specific context here that Claude should know about.
