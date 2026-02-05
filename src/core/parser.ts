@@ -16,14 +16,24 @@ export async function parseMarkdown(filePath: string): Promise<ParsedFile | null
     return null;
   }
 
-  const raw = await readFile(filePath, "utf-8");
-  const { data, content } = matter(raw);
+  try {
+    const raw = await readFile(filePath, "utf-8");
+    const { data, content } = matter(raw);
 
-  return {
-    frontmatter: data,
-    content: content.trim(),
-    raw,
-  };
+    return {
+      frontmatter: data,
+      content: content.trim(),
+      raw,
+    };
+  } catch {
+    // If YAML parsing fails, return file as content-only
+    const raw = await readFile(filePath, "utf-8");
+    return {
+      frontmatter: {},
+      content: raw.trim(),
+      raw,
+    };
+  }
 }
 
 /**

@@ -83,7 +83,7 @@ Press `P` in the TUI to switch profiles interactively.
 | `think edit <file>` | Edit any config file |
 | `think allow "cmd"` | Pre-approve a command |
 | `think tree` | Preview project file tree |
-| `think project learn` | Generate CLAUDE.md for current project |
+| `think project` | Generate CLAUDE.md for current project |
 | `think help` | Show all commands |
 
 ## TUI
@@ -94,13 +94,14 @@ Run `think` to launch the fullscreen TUI:
 |-----|--------|
 | `Tab` | Switch sections |
 | `↑↓` / `jk` | Navigate / scroll |
-| `Enter` | Edit selected item |
-| `d` | Delete selected item |
+| `e` | Edit selected item |
+| `n` | New agent/skill |
+| `r` | Rename agent/skill |
+| `d` | Delete item |
 | `a` | Quick actions (sync, learn, search) |
 | `p` | Preview CLAUDE.md |
 | `P` | Switch profile |
 | `/` | Search all files |
-| `e` | Open in $EDITOR |
 | `?` | Help |
 | `q` | Quit |
 

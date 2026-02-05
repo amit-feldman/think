@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2025-02-06
+
+### Added
+- **Smart project detection** - `think project` now detects:
+  - Monorepo tools (Turborepo, Nx, Lerna, pnpm/yarn/bun workspaces)
+  - Workspace structure with types (apps, packages, services)
+  - Frameworks from all workspaces (React, Tauri, Hono, Claude SDK, etc.)
+  - Tooling (Biome, Docker, TypeScript, Vite, Prisma, etc.)
+  - README tagline/description
+- **Agent/Skill management in TUI**:
+  - `n` - create new with auto-generated name (e.g., "swift-falcon")
+  - `r` - rename selected item
+  - `d` - delete with confirmation
+- Creative name generator for new agents/skills
+
+### Fixed
+- YAML parsing errors no longer crash the TUI (graceful fallback)
+- Long descriptions truncated in agent/skill lists
+
+## [0.4.1] - 2025-02-06
+
+### Added
+- Improved project detection for monorepos
+- Detect runtime (Bun vs Node vs Deno)
+- Detect frameworks from workspace dependencies
+
 ## [0.4.0] - 2025-02-05
 
 ### Added
