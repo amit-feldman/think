@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text, useInput, useApp } from "ink";
+import { Box, Text, useInput, useApp, useStdout } from "ink";
 import { Navigation } from "./components/Navigation";
 import { Profile } from "./components/Profile";
 import { Preferences } from "./components/Preferences";
@@ -30,10 +30,16 @@ type Modal = "none" | "help" | "actions" | "preview" | "search";
 
 export function App() {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const [section, setSection] = useState<Section>("profile");
   const [modal, setModal] = useState<Modal>("none");
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [initialized, setInitialized] = useState(false);
+
+  // Get terminal dimensions
+  const width = stdout?.columns ?? 80;
+  const isNarrow = width < 80;
+  const isVeryNarrow = width < 50;
 
   useEffect(() => {
     setInitialized(existsSync(CONFIG.thinkDir));
@@ -97,7 +103,7 @@ export function App() {
   if (modal === "actions") {
     return (
       <Box flexDirection="column" padding={1}>
-        <Header />
+        <Header width={width} />
         <QuickActions
           onMessage={handleMessage}
           onClose={() => setModal("none")}
@@ -109,7 +115,7 @@ export function App() {
   if (modal === "preview") {
     return (
       <Box flexDirection="column" padding={1}>
-        <Header />
+        <Header width={width} />
         <Preview onClose={() => setModal("none")} />
       </Box>
     );
@@ -118,7 +124,7 @@ export function App() {
   if (modal === "search") {
     return (
       <Box flexDirection="column" padding={1}>
-        <Header />
+        <Header width={width} />
         <Search onClose={() => setModal("none")} />
       </Box>
     );
@@ -147,7 +153,7 @@ export function App() {
 
   return (
     <Box flexDirection="column">
-      <Header />
+      <Header width={width} />
 
       <Navigation currentSection={section} onSectionChange={setSection} />
 
@@ -168,20 +174,33 @@ export function App() {
 
       <Box marginTop={1}>
         <Text color="gray">
-          Tab: sections | a: actions | p: preview | /: search | ?: help | q: quit
+          {isNarrow
+            ? "Tab:nav a:act p:prev /:search ?:help q:quit"
+            : "Tab: sections | a: actions | p: preview | /: search | ?: help | q: quit"}
         </Text>
       </Box>
     </Box>
   );
 }
 
-function Header() {
+function Header({ width }: { width: number }) {
+  // Full banner needs ~45 chars, compact needs ~25
+  if (width >= 50) {
+    return (
+      <Box marginBottom={1}>
+        <Text color="green" bold>
+          ▀█▀ █░█ █ █▄░█ █▄▀
+        </Text>
+        <Text color="gray"> Personal Context for Claude</Text>
+      </Box>
+    );
+  }
+
+  // Compact header for narrow terminals
   return (
     <Box marginBottom={1}>
-      <Text color="green" bold>
-        ▀█▀ █░█ █ █▄░█ █▄▀
-      </Text>
-      <Text color="gray"> Personal Context for Claude</Text>
+      <Text color="green" bold>think</Text>
+      <Text color="gray"> - Claude Context</Text>
     </Box>
   );
 }

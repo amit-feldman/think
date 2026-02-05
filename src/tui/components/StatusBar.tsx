@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { existsSync, statSync } from "fs";
 import { readFile } from "fs/promises";
 import { CONFIG, thinkPath } from "../../core/config";
@@ -43,6 +43,10 @@ export function StatusBar({ message }: StatusBarProps) {
     }
   }
 
+  const { stdout } = useStdout();
+  const width = stdout?.columns ?? 80;
+  const isNarrow = width < 60;
+
   return (
     <Box borderStyle="single" borderColor="gray" paddingX={1}>
       <Box flexGrow={1}>
@@ -52,18 +56,18 @@ export function StatusBar({ message }: StatusBarProps) {
           <Text color="gray">Ready</Text>
         )}
       </Box>
-      <Box marginLeft={2}>
+      <Box marginLeft={1}>
         <Text color="green">{learningsCount}</Text>
-        <Text color="gray"> learnings</Text>
+        <Text color="gray">{isNarrow ? "L" : " learnings"}</Text>
       </Box>
       {pendingCount > 0 && (
-        <Box marginLeft={2}>
+        <Box marginLeft={1}>
           <Text color="yellow">{pendingCount}</Text>
-          <Text color="gray"> pending</Text>
+          <Text color="gray">{isNarrow ? "P" : " pending"}</Text>
         </Box>
       )}
-      {lastSync && (
-        <Box marginLeft={2}>
+      {lastSync && !isNarrow && (
+        <Box marginLeft={1}>
           <Text color="gray">synced {lastSync}</Text>
         </Box>
       )}
