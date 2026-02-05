@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-02-05
+
+### Added
+- Enhanced TUI with new features:
+  - **Status bar** - shows learnings count, pending count, last sync time
+  - **Quick actions menu** (press `a`) - sync, add learning, search
+  - **Preview panel** (press `p`) - view generated CLAUDE.md with scrolling
+  - **Search** (press `/`) - search across all config files
+  - **Better help screen** (press `?`) - organized shortcuts and CLI commands
+- New keyboard shortcuts: `a` actions, `p` preview, `/` search, `Ctrl+S` sync
+- Bordered content panels for cleaner visual design
+
+### Changed
+- TUI now uses modals for actions, preview, search, and help
+- Improved navigation hints in footer
+
 ## [0.2.1] - 2025-02-05
 
 ### Added
