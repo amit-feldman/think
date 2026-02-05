@@ -10,6 +10,7 @@ import { allowCommand } from "./commands/allow";
 import { reviewCommand } from "./commands/review";
 import { treeCommand } from "./commands/tree";
 import { projectInitCommand } from "./commands/project";
+import { projectLearnCommand } from "./commands/project-learn";
 import { helpCommand } from "./commands/help";
 import { setupCommand } from "./commands/setup";
 import { printBanner } from "../core/banner";
@@ -90,6 +91,12 @@ projectCmd
   .description("Initialize .think.yaml for current project")
   .option("-f, --force", "Overwrite existing config")
   .action(projectInitCommand);
+
+projectCmd
+  .command("learn")
+  .description("Generate CLAUDE.md with project structure")
+  .option("-f, --force", "Overwrite existing CLAUDE.md")
+  .action(projectLearnCommand);
 
 // Help command
 program

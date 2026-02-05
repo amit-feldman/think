@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import { join } from "path";
-import YAML from "gray-matter";
+import matter from "gray-matter";
 
 export interface ProjectInfo {
   type: ProjectType;
@@ -54,7 +54,7 @@ export async function detectProject(dir: string): Promise<ProjectInfo> {
 
   if (existsSync(thinkConfigPath)) {
     const content = await readFile(thinkConfigPath, "utf-8");
-    const parsed = YAML.default(content);
+    const parsed = matter(content);
     customConfig = parsed.data as ThinkProjectConfig;
   }
 
