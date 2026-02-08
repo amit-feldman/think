@@ -1,9 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, useStdout } from "ink";
 
-const enterAltScreenCommand = "\x1b[?1049h";
-const leaveAltScreenCommand = "\x1b[?1049l";
-
 interface FullScreenProps {
   children: React.ReactNode;
 }
@@ -16,10 +13,6 @@ export function FullScreen({ children }: FullScreenProps) {
   });
 
   useEffect(() => {
-    // Enter alternate screen buffer (preserves terminal history)
-    process.stdout.write(enterAltScreenCommand);
-
-    // Handle resize
     const handleResize = () => {
       setDimensions({
         width: process.stdout.columns,
@@ -28,11 +21,8 @@ export function FullScreen({ children }: FullScreenProps) {
     };
 
     process.stdout.on("resize", handleResize);
-
-    // Cleanup: leave alternate screen buffer
     return () => {
       process.stdout.off("resize", handleResize);
-      process.stdout.write(leaveAltScreenCommand);
     };
   }, []);
 

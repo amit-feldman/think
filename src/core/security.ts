@@ -42,3 +42,27 @@ export function validatePathWithin(basePath: string, targetPath: string): string
   }
   return targetPath;
 }
+
+/**
+ * Sanitize a string for use in a markdown heading.
+ * Strips characters that could break markdown structure or inject instructions.
+ * Used for EXTERNAL/untrusted content only (project names, README excerpts).
+ */
+export function sanitizeMarkdownHeading(text: string): string {
+  return text
+    .replace(/[\r\n]+/g, " ")       // No newlines in headings
+    .replace(/^#+\s*/g, "")          // Strip heading markers
+    .replace(/```/g, "")             // Strip code fence markers
+    .replace(/---+/g, "-")           // Strip YAML front matter markers
+    .slice(0, 200)                   // Cap length
+    .trim();
+}
+
+/**
+ * Sanitize a string for embedding in a markdown code block.
+ * Prevents breaking out of ``` fences.
+ */
+export function sanitizeCodeBlock(text: string): string {
+  // Replace sequences of 3+ backticks that could close a code fence
+  return text.replace(/`{3,}/g, "``");
+}

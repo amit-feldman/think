@@ -1,79 +1,83 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
-import { readdir, rename, unlink } from "fs/promises";
+import { readdir, rename, unlink, copyFile } from "fs/promises";
 import { existsSync } from "fs";
-import { thinkPath, CONFIG } from "../../core/config";
-import { parseMarkdown } from "../../core/parser";
-import { generateUniqueFilename } from "../../core/names";
+import { thinkPath, CONFIG } from "../../core/config.ts";
+import { parseMarkdown } from "../../core/parser.ts";
+import { generateUniqueFilename } from "../../core/names.ts";
 import { spawn } from "child_process";
 import { join } from "path";
 
-interface SkillInfo {
+interface ItemInfo {
   name: string;
   description: string;
+  trigger: string;
   path: string;
   filename: string;
 }
 
 interface SkillsProps {
   height?: number;
+  isActive?: boolean;
 }
 
 type Mode = "list" | "rename" | "confirmDelete";
 
-export function Skills({ height = 15 }: SkillsProps) {
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
+export function Skills({ height = 15, isActive = true }: SkillsProps) {
+  const [items, setItems] = useState<ItemInfo[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<Mode>("list");
   const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
-    loadSkills();
+    loadItems();
   }, []);
 
-  async function loadSkills() {
+  async function loadItems() {
     setLoading(true);
-    const skillsDir = thinkPath(CONFIG.dirs.skills);
+    const dir = thinkPath(CONFIG.dirs.skills);
 
-    if (!existsSync(skillsDir)) {
-      setSkills([]);
+    if (!existsSync(dir)) {
+      setItems([]);
       setLoading(false);
       return;
     }
 
-    const files = await readdir(skillsDir);
-    const skillFiles = files.filter((f) => f.endsWith(".md"));
+    const files = await readdir(dir);
+    const mdFiles = files.filter((f) => f.endsWith(".md"));
 
-    const skillInfos: SkillInfo[] = [];
-    for (const file of skillFiles) {
-      const path = join(skillsDir, file);
+    const infos: ItemInfo[] = [];
+    for (const file of mdFiles) {
+      const path = join(dir, file);
       try {
         const parsed = await parseMarkdown(path);
-        skillInfos.push({
+        infos.push({
           name: (parsed?.frontmatter?.name as string) || file.replace(".md", ""),
           description: (parsed?.frontmatter?.description as string) || "",
+          trigger: (parsed?.frontmatter?.trigger as string) || "",
           path,
           filename: file,
         });
       } catch {
-        skillInfos.push({
+        infos.push({
           name: file.replace(".md", ""),
           description: "",
+          trigger: "",
           path,
           filename: file,
         });
       }
     }
 
-    setSkills(skillInfos);
+    setItems(infos);
     setLoading(false);
   }
 
   async function handleRename() {
-    const skill = skills[selectedIndex];
-    if (!skill || !renameValue.trim()) return;
+    const item = items[selectedIndex];
+    if (!item || !renameValue.trim()) return;
 
     const newFilename = renameValue.trim().endsWith(".md")
       ? renameValue.trim()
@@ -81,88 +85,110 @@ export function Skills({ height = 15 }: SkillsProps) {
     const newPath = join(thinkPath(CONFIG.dirs.skills), newFilename);
 
     try {
-      await rename(skill.path, newPath);
+      await rename(item.path, newPath);
       setMode("list");
       setRenameValue("");
-      await loadSkills();
+      await loadItems();
     } catch {
       // Failed to rename
     }
   }
 
   async function handleDelete() {
-    const skill = skills[selectedIndex];
-    if (!skill) return;
+    const item = items[selectedIndex];
+    if (!item) return;
 
     try {
-      await unlink(skill.path);
+      await unlink(item.path);
       setMode("list");
-      await loadSkills();
-      if (selectedIndex >= skills.length - 1) {
-        setSelectedIndex(Math.max(0, skills.length - 2));
+      await loadItems();
+      if (selectedIndex >= items.length - 1) {
+        setSelectedIndex(Math.max(0, items.length - 2));
       }
     } catch {
       // Failed to delete
     }
   }
 
-  useInput((input, key) => {
-    // Rename mode
-    if (mode === "rename") {
-      if (key.escape) {
-        setMode("list");
-        setRenameValue("");
-      }
-      return;
-    }
+  async function handleDuplicate() {
+    const item = items[selectedIndex];
+    if (!item) return;
 
-    // Confirm delete mode
-    if (mode === "confirmDelete") {
-      if (input === "y" || input === "Y") {
-        handleDelete();
-      } else {
-        setMode("list");
-      }
-      return;
-    }
+    const existingNames = items.map((s) => s.filename.replace(".md", ""));
+    const newFilename = generateUniqueFilename(existingNames);
+    const newPath = join(thinkPath(CONFIG.dirs.skills), newFilename);
 
-    // List mode
-    if (key.upArrow || input === "k") {
-      setSelectedIndex((i) => Math.max(0, i - 1));
+    try {
+      await copyFile(item.path, newPath);
+      await loadItems();
+    } catch {
+      // Failed to duplicate
     }
-    if (key.downArrow || input === "j") {
-      setSelectedIndex((i) => Math.min(skills.length - 1, i + 1));
-    }
-    if (input === "e" && skills[selectedIndex]) {
-      const editor = process.env.EDITOR || "vi";
-      spawn(editor, [skills[selectedIndex].path], {
-        stdio: "inherit",
-      }).on("exit", () => {
-        loadSkills();
-      });
-    }
-    if (input === "n") {
-      const editor = process.env.EDITOR || "vi";
-      const existingNames = skills.map((s) => s.filename.replace(".md", ""));
-      const newFilename = generateUniqueFilename(existingNames);
-      const newPath = thinkPath(CONFIG.dirs.skills, newFilename);
-      spawn(editor, [newPath], {
-        stdio: "inherit",
-      }).on("exit", () => {
-        loadSkills();
-      });
-    }
-    if (input === "r" && skills[selectedIndex]) {
-      setRenameValue(skills[selectedIndex].filename.replace(".md", ""));
-      setMode("rename");
-    }
-    if (input === "d" && skills[selectedIndex]) {
-      setMode("confirmDelete");
-    }
-  });
+  }
+
+  useInput(
+    (input, key) => {
+      // Rename mode
+      if (mode === "rename") {
+        if (key.escape) {
+          setMode("list");
+          setRenameValue("");
+        }
+        return;
+      }
+
+      // Confirm delete mode
+      if (mode === "confirmDelete") {
+        if (input === "y" || input === "Y") {
+          handleDelete();
+        } else {
+          setMode("list");
+        }
+        return;
+      }
+
+      // List mode
+      if (key.upArrow || input === "k") {
+        setSelectedIndex((i) => Math.max(0, i - 1));
+      }
+      if (key.downArrow || input === "j") {
+        setSelectedIndex((i) => Math.min(items.length - 1, i + 1));
+      }
+      if (input === "e" && items[selectedIndex]) {
+        const editor = process.env.EDITOR || "vi";
+        spawn(editor, [items[selectedIndex].path], {
+          stdio: "inherit",
+        }).on("exit", () => {
+          loadItems();
+        });
+      }
+      if (input === "n") {
+        const editor = process.env.EDITOR || "vi";
+        const existingNames = items.map((s) => s.filename.replace(".md", ""));
+        const newFilename = generateUniqueFilename(existingNames);
+        const newPath = thinkPath(CONFIG.dirs.skills, newFilename);
+        spawn(editor, [newPath], {
+          stdio: "inherit",
+        }).on("exit", () => {
+          loadItems();
+        });
+      }
+      if (input === "r" && items[selectedIndex]) {
+        setRenameValue(items[selectedIndex].filename.replace(".md", ""));
+        setMode("rename");
+      }
+      if (input === "d" && items[selectedIndex]) {
+        setMode("confirmDelete");
+      }
+      if (input === "c" && items[selectedIndex]) {
+        handleDuplicate();
+      }
+    },
+    { isActive },
+  );
 
   if (loading) {
-    return <Text color="gray">Loading...</Text>;
+    return <Text dimColor>Loading...</Text>;
   }
 
   // Rename mode
@@ -170,10 +196,10 @@ export function Skills({ height = 15 }: SkillsProps) {
     return (
       <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold color="green">Rename Skill</Text>
+          <Text bold color="cyan">Rename Skill</Text>
         </Box>
         <Box>
-          <Text color="cyan">New name: </Text>
+          <Text color="cyan">  New name: </Text>
           <TextInput
             value={renameValue}
             onChange={setRenameValue}
@@ -182,7 +208,7 @@ export function Skills({ height = 15 }: SkillsProps) {
           />
         </Box>
         <Box marginTop={1}>
-          <Text color="gray">Enter: save | Esc: cancel</Text>
+          <Text dimColor>  Enter: save | Esc: cancel</Text>
         </Box>
       </Box>
     );
@@ -190,57 +216,73 @@ export function Skills({ height = 15 }: SkillsProps) {
 
   // Confirm delete mode
   if (mode === "confirmDelete") {
-    const skill = skills[selectedIndex];
+    const item = items[selectedIndex];
     return (
       <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold color="red">Delete Skill</Text>
+          <Text bold color="red">  Delete Skill</Text>
         </Box>
         <Box>
-          <Text>Delete </Text>
-          <Text color="cyan" bold>"{skill?.name}"</Text>
+          <Text>  Delete </Text>
+          <Text color="cyan" bold>"{item?.name}"</Text>
           <Text>?</Text>
         </Box>
         <Box marginTop={1}>
-          <Text color="red" bold>y</Text>
-          <Text color="gray">: delete | any key: cancel</Text>
+          <Text color="red" bold>  y</Text>
+          <Text dimColor>: delete | any key: cancel</Text>
         </Box>
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={height}>
       <Box marginBottom={1}>
-        <Text bold color="green">
-          Custom Skills
+        <Text bold color="cyan">
+          {"  "}Custom Skills
         </Text>
-        <Text color="gray"> ({skills.length})</Text>
+        <Text dimColor> ({items.length})</Text>
       </Box>
 
-      {skills.length === 0 ? (
-        <Box paddingLeft={1}>
-          <Text color="gray">No custom skills. Press 'n' to create one.</Text>
+      {items.length === 0 ? (
+        <Box>
+          <Text dimColor>  No skills yet. Press </Text>
+          <Text color="cyan">n</Text>
+          <Text dimColor> to create your first.</Text>
         </Box>
       ) : (
-        <Box flexDirection="column" paddingLeft={1}>
-          {skills.map((skill, i) => (
-            <Box key={skill.path}>
-              <Text color={i === selectedIndex ? "green" : undefined}>
-                {i === selectedIndex ? "▸ " : "  "}
-                {skill.name}
-              </Text>
-              {skill.description && (
-                <Text color="gray"> - {skill.description.slice(0, 50)}{skill.description.length > 50 ? "..." : ""}</Text>
+        <Box flexDirection="column">
+          {items.map((item, i) => (
+            <Box key={item.path} flexDirection="column">
+              <Box>
+                <Text color={i === selectedIndex ? "cyan" : undefined}>
+                  {i === selectedIndex ? "  \u25b8 " : "    "}
+                </Text>
+                <Text
+                  color={i === selectedIndex ? "white" : undefined}
+                  bold={i === selectedIndex}
+                >
+                  {item.name}
+                </Text>
+                {item.description && (
+                  <Text dimColor>
+                    {"  "}
+                    {item.description.slice(0, 50)}
+                    {item.description.length > 50 ? "..." : ""}
+                  </Text>
+                )}
+              </Box>
+              {i === selectedIndex && item.trigger && (
+                <Box>
+                  <Text>      </Text>
+                  <Text color="yellow">when: </Text>
+                  <Text dimColor>{item.trigger}</Text>
+                </Box>
               )}
             </Box>
           ))}
         </Box>
       )}
-
-      <Box marginTop={1}>
-        <Text color="gray">↑↓: select | e: edit | n: new | r: rename | d: delete</Text>
-      </Box>
     </Box>
   );
 }

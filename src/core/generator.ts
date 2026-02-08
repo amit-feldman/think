@@ -1,24 +1,115 @@
-import { writeFile } from "fs/promises";
-import { CONFIG, thinkPath } from "./config";
-import { parseMarkdown } from "./parser";
+import { writeFile, readdir } from "fs/promises";
+import { existsSync } from "fs";
+import { join } from "path";
+import { CONFIG, thinkPath } from "./config.ts";
+import { parseMarkdown } from "./parser.ts";
+import type { ParsedFile } from "./parser.ts";
+
+/**
+ * Read all .md files from a directory, returning parsed results.
+ */
+async function readMdDir(dirPath: string): Promise<ParsedFile[]> {
+  if (!existsSync(dirPath)) return [];
+
+  let entries;
+  try {
+    entries = await readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const mdFiles = entries.filter((e) => e.isFile() && e.name.endsWith(".md"));
+  const results: ParsedFile[] = [];
+
+  for (const file of mdFiles) {
+    const parsed = await parseMarkdown(join(dirPath, file.name));
+    if (parsed) {
+      results.push(parsed);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Prepare file content for embedding under a ## section header.
+ * Strips leading # heading (redundant with section header) and
+ * bumps all heading levels +1 so they nest properly.
+ */
+function nestContent(content: string): string {
+  const lines = content.split("\n");
+  let startIdx = 0;
+
+  // Strip leading # heading (it duplicates the section header)
+  if (lines[0]?.match(/^# /)) {
+    startIdx = 1;
+    // Also skip blank line after the heading
+    if (lines[startIdx]?.trim() === "") startIdx++;
+  }
+
+  return lines
+    .slice(startIdx)
+    .map((line) => (line.match(/^#{1,5} /) ? `#${line}` : line))
+    .join("\n");
+}
+
+/**
+ * Format a skill or agent entry for output.
+ * Renders frontmatter metadata and content.
+ */
+function formatEntry(parsed: ParsedFile): string {
+  const parts: string[] = [];
+  const fm = parsed.frontmatter;
+
+  const name = fm.name ?? fm.title;
+  if (typeof name === "string" && name) {
+    parts.push(`### ${name}\n`);
+  }
+
+  if (typeof fm.description === "string" && fm.description) {
+    parts.push(fm.description);
+    parts.push("");
+  }
+
+  if (typeof fm.trigger === "string" && fm.trigger) {
+    parts.push(`**Trigger**: ${fm.trigger}`);
+  }
+
+  if (Array.isArray(fm.tools) && fm.tools.length > 0) {
+    parts.push(`**Tools**: ${fm.tools.join(", ")}`);
+  }
+
+  if (parsed.content) {
+    parts.push("");
+    parts.push(nestContent(parsed.content));
+  }
+
+  return parts.join("\n");
+}
 
 /**
  * Generate CLAUDE.md from ~/.think sources
  * Outputs to ~/.claude/CLAUDE.md which Claude reads automatically
  */
 export async function generatePlugin(): Promise<void> {
-  // Read all files in parallel
-  const [profile, tools, patterns, antiPatterns, learnings, corrections, subagents, workflows] =
+  // Read all core files in parallel
+  const [profile, tools, patterns, antiPatterns, learnings, subagents, workflows] =
     await Promise.all([
       parseMarkdown(thinkPath(CONFIG.files.profile)),
       parseMarkdown(thinkPath(CONFIG.files.tools)),
       parseMarkdown(thinkPath(CONFIG.files.patterns)),
       parseMarkdown(thinkPath(CONFIG.files.antiPatterns)),
       parseMarkdown(thinkPath(CONFIG.files.learnings)),
-      parseMarkdown(thinkPath(CONFIG.files.corrections)),
       parseMarkdown(thinkPath(CONFIG.files.subagents)),
       parseMarkdown(thinkPath(CONFIG.files.workflows)),
     ]);
+
+  // Read skills, agents, and workflow directories
+  const [skillFiles, agentFiles, workflowFiles] = await Promise.all([
+    readMdDir(thinkPath(CONFIG.dirs.skills)),
+    readMdDir(thinkPath(CONFIG.dirs.agents)),
+    readMdDir(thinkPath("automation", "workflows")),
+  ]);
 
   const sections: string[] = [];
 
@@ -32,7 +123,7 @@ export async function generatePlugin(): Promise<void> {
       sections.push(`Name: ${profile.frontmatter.name}\n`);
     }
     if (profile.content) {
-      sections.push(profile.content);
+      sections.push(nestContent(profile.content));
     }
     sections.push("");
   }
@@ -40,51 +131,82 @@ export async function generatePlugin(): Promise<void> {
   // Tool preferences
   if (tools?.content) {
     sections.push("## Tool Preferences\n");
-    sections.push(tools.content);
+    sections.push(nestContent(tools.content));
     sections.push("");
   }
 
   // Patterns
   if (patterns?.content) {
     sections.push("## Patterns to Follow\n");
-    sections.push(patterns.content);
+    sections.push(nestContent(patterns.content));
     sections.push("");
   }
 
   // Anti-patterns
   if (antiPatterns?.content) {
     sections.push("## Anti-Patterns to Avoid\n");
-    sections.push(antiPatterns.content);
+    sections.push(nestContent(antiPatterns.content));
     sections.push("");
   }
 
   // Learnings
   if (learnings?.content) {
     sections.push("## Memory - Learnings\n");
-    sections.push(learnings.content);
+    sections.push(nestContent(learnings.content));
     sections.push("");
   }
 
-  // Corrections
-  if (corrections?.content) {
-    sections.push("## Memory - Corrections\n");
-    sections.push(corrections.content);
-    sections.push("");
+  // Skills
+  if (skillFiles.length > 0) {
+    sections.push("## Skills\n");
+    for (const skill of skillFiles) {
+      sections.push(formatEntry(skill));
+      sections.push("");
+    }
+  }
+
+  // Agents
+  if (agentFiles.length > 0) {
+    sections.push("## Agents\n");
+    for (const agent of agentFiles) {
+      sections.push(formatEntry(agent));
+      sections.push("");
+    }
+  }
+
+  // Workflows (from directory)
+  if (workflowFiles.length > 0) {
+    sections.push("## Workflows\n");
+    for (const wf of workflowFiles) {
+      if (wf.content) {
+        const name = wf.frontmatter?.name ?? wf.frontmatter?.title;
+        if (typeof name === "string" && name) {
+          sections.push(`### ${name}\n`);
+        }
+        sections.push(nestContent(wf.content));
+        sections.push("");
+      }
+    }
   }
 
   // Subagent automation
   if (subagents?.content) {
-    sections.push("## Automation - Subagents\n");
+    sections.push("## Subagent Automation\n");
     sections.push("Follow these rules for automatically spawning subagents:\n");
-    sections.push(subagents.content);
+    sections.push(nestContent(subagents.content));
     sections.push("");
   }
 
-  // Workflows
+  // Legacy workflows (from single file)
   if (workflows?.content) {
-    sections.push("## Automation - Workflows\n");
-    sections.push(workflows.content);
-    sections.push("");
+    if (workflowFiles.length === 0) {
+      sections.push("## Workflows\n");
+      sections.push(nestContent(workflows.content));
+      sections.push("");
+    } else {
+      sections.push(nestContent(workflows.content));
+      sections.push("");
+    }
   }
 
   await writeFile(CONFIG.claudeMdPath, sections.join("\n"));

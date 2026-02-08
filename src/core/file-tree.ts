@@ -1,24 +1,27 @@
-import { readdir, stat, readFile } from "fs/promises";
+import { readdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join, relative, basename } from "path";
-import { parseMarkdown } from "./parser";
-import { thinkPath, CONFIG } from "./config";
+import { parseMarkdown } from "./parser.ts";
+import { thinkPath, CONFIG, estimateTokens } from "./config.ts";
 
-interface FileTreeConfig {
+export interface FileTreeConfig {
   ignorePatterns: string[];
   maxDepth: number;
   annotations: Record<string, string>;
 }
 
-interface TreeNode {
+export interface TreeNode {
   name: string;
   path: string;
   type: "file" | "directory";
   annotation?: string;
   children?: TreeNode[];
+  collapsed?: boolean;
+  fileCount?: number;
+  dirCount?: number;
 }
 
-const DEFAULT_IGNORE = [
+export const DEFAULT_IGNORE = [
   "node_modules",
   ".git",
   "dist",
@@ -50,6 +53,8 @@ const DEFAULT_ANNOTATIONS: Record<string, string> = {
   ".env.example": "environment template",
 };
 
+const DIR_COLLAPSE_THRESHOLD = 15;
+
 /**
  * Load file tree configuration from ~/.think/templates/file-tree.md
  */
@@ -65,15 +70,8 @@ async function loadConfig(): Promise<FileTreeConfig> {
   }
 
   const parsed = await parseMarkdown(configPath);
-  if (!parsed) {
-    return {
-      ignorePatterns: DEFAULT_IGNORE,
-      maxDepth: 4,
-      annotations: DEFAULT_ANNOTATIONS,
-    };
-  }
-
-  const content = parsed.content;
+  // parseMarkdown only returns null for non-existent files, which is handled above
+  const content = parsed!.content;
   const ignorePatterns: string[] = [...DEFAULT_IGNORE];
   const annotations: Record<string, string> = { ...DEFAULT_ANNOTATIONS };
   let maxDepth = 4;
@@ -93,7 +91,7 @@ async function loadConfig(): Promise<FileTreeConfig> {
   // Parse max depth
   const depthMatch = content.match(/## Max Depth\s*\n\s*(\d+)/);
   if (depthMatch) {
-    maxDepth = parseInt(depthMatch[1], 10);
+    maxDepth = parseInt(depthMatch[1]!, 10);
   }
 
   // Parse annotations
@@ -149,7 +147,7 @@ function getAnnotation(
       const regex = new RegExp(
         "^" + pattern.replace(/\./g, "\\.").replace(/\*/g, ".*") + "$"
       );
-      if (regex.test(relativePath) || regex.test(name)) {
+      if (regex.test(relativePath)) {
         return desc;
       }
     }
@@ -159,34 +157,90 @@ function getAnnotation(
 }
 
 /**
- * Build file tree recursively
+ * Check if a directory path contains any significant paths.
+ */
+function containsSignificant(
+  dirRelPath: string,
+  significantPaths: Set<string> | undefined
+): boolean {
+  if (!significantPaths || significantPaths.size === 0) return false;
+  for (const sp of significantPaths) {
+    if (sp.startsWith(dirRelPath + "/") || sp === dirRelPath) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Build file tree recursively with optional collapsing/significance support.
  */
 async function buildTree(
   dir: string,
   rootDir: string,
   config: FileTreeConfig,
-  depth: number = 0
+  depth: number = 0,
+  significantPaths?: Set<string>
 ): Promise<TreeNode[]> {
   if (depth >= config.maxDepth) return [];
 
-  const entries = await readdir(dir, { withFileTypes: true });
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
   const nodes: TreeNode[] = [];
 
+  // Filter out ignored entries first
+  const visible = entries.filter((e) => !shouldIgnore(e.name, config.ignorePatterns));
+
   // Sort: directories first, then files, alphabetically
-  const sorted = entries.sort((a, b) => {
+  const sorted = visible.sort((a, b) => {
     if (a.isDirectory() && !b.isDirectory()) return -1;
     if (!a.isDirectory() && b.isDirectory()) return 1;
     return a.name.localeCompare(b.name);
   });
 
-  for (const entry of sorted) {
-    if (shouldIgnore(entry.name, config.ignorePatterns)) continue;
+  // Check for collapsing: if too many children and not significant
+  const dirRelPath = relative(rootDir, dir);
+  const isSignificant =
+    dirRelPath === "" || containsSignificant(dirRelPath, significantPaths);
 
+  if (
+    sorted.length > DIR_COLLAPSE_THRESHOLD &&
+    !isSignificant &&
+    depth > 0
+  ) {
+    const fileCount = sorted.filter((e) => e.isFile()).length;
+    const dirCount = sorted.filter((e) => e.isDirectory()).length;
+    // Return a collapsed node representation — the parent will handle this
+    // We return an empty array here but mark the info on the caller side
+    return [
+      {
+        name: `(${fileCount} files, ${dirCount} dirs)`,
+        path: dirRelPath,
+        type: "file" as const,
+        collapsed: true,
+        fileCount,
+        dirCount,
+      },
+    ];
+  }
+
+  for (const entry of sorted) {
     const fullPath = join(dir, entry.name);
     const relativePath = relative(rootDir, fullPath);
 
     if (entry.isDirectory()) {
-      const children = await buildTree(fullPath, rootDir, config, depth + 1);
+      const children = await buildTree(
+        fullPath,
+        rootDir,
+        config,
+        depth + 1,
+        significantPaths
+      );
       // Only include directory if it has visible children
       if (children.length > 0) {
         nodes.push({
@@ -216,7 +270,7 @@ function renderTree(nodes: TreeNode[], prefix: string = ""): string {
   const lines: string[] = [];
 
   for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
+    const node = nodes[i]!;
     const isLast = i === nodes.length - 1;
     const connector = isLast ? "└── " : "├── ";
     const childPrefix = isLast ? "    " : "│   ";
@@ -252,4 +306,29 @@ export async function generateFileTree(projectDir: string): Promise<string> {
 export async function generateFileTreeMarkdown(projectDir: string): Promise<string> {
   const tree = await generateFileTree(projectDir);
   return `\`\`\`\n${tree}\n\`\`\``;
+}
+
+/**
+ * Generate an adaptive file tree that fits within a token budget.
+ * Starts at depth 4, reduces depth if the rendered tree exceeds the budget.
+ * Collapses directories with many children and no significant files.
+ */
+export async function generateAdaptiveTree(
+  projectDir: string,
+  options?: { budgetTokens?: number; significantPaths?: Set<string> }
+): Promise<string> {
+  const baseConfig = await loadConfig();
+  const budget = options?.budgetTokens ?? 1500;
+  const significantPaths = options?.significantPaths;
+  const projectName = basename(projectDir);
+
+  // Try depths 4 down to 1; always accept at depth 1 regardless of budget
+  let result = `${projectName}/\n`;
+  for (const maxDepth of [4, 3, 2, 1]) {
+    const config: FileTreeConfig = { ...baseConfig, maxDepth };
+    const nodes = await buildTree(projectDir, projectDir, config, 0, significantPaths);
+    result = `${projectName}/\n${renderTree(nodes)}`;
+    if (estimateTokens(result) <= budget || maxDepth === 1) break;
+  }
+  return result;
 }

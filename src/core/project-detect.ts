@@ -139,7 +139,7 @@ function parsePnpmWorkspaces(dir: string): string[] {
     const content = readFileSync(wsPath, "utf-8");
     const match = content.match(/packages:\s*\n((?:\s*-\s*.+\n?)+)/);
     if (match) {
-      return match[1].split("\n")
+      return match[1]!.split("\n")
         .map(line => line.replace(/^\s*-\s*['"]?|['"]?\s*$/g, ""))
         .filter(Boolean);
     }
@@ -246,11 +246,13 @@ function detectFrameworks(dir: string, pkg: any): string[] {
   // Rust detection
   const cargoPath = join(dir, "Cargo.toml");
   if (existsSync(cargoPath)) {
-    const cargo = readFileSync(cargoPath, "utf-8");
-    if (cargo.includes("tauri")) frameworks.push("Tauri");
-    if (cargo.includes("actix")) frameworks.push("Actix");
-    if (cargo.includes("axum")) frameworks.push("Axum");
-    if (cargo.includes("rocket")) frameworks.push("Rocket");
+    try {
+      const cargo = readFileSync(cargoPath, "utf-8");
+      if (cargo.includes("tauri")) frameworks.push("Tauri");
+      if (cargo.includes("actix")) frameworks.push("Actix");
+      if (cargo.includes("axum")) frameworks.push("Axum");
+      if (cargo.includes("rocket")) frameworks.push("Rocket");
+    } catch {}
   }
 
   return [...new Set(frameworks)]; // dedupe
@@ -305,14 +307,14 @@ function extractReadmeDescription(dir: string): string | undefined {
     // Try to find a tagline/description pattern (often in bold after title)
     // Match patterns like "**The Agentic Development Environment**"
     const taglineMatch = content.match(/\*\*([^*]{10,100})\*\*/);
-    if (taglineMatch && !taglineMatch[1].includes("http") && !taglineMatch[1].includes("badge")) {
-      return taglineMatch[1].trim();
+    if (taglineMatch && !taglineMatch[1]!.includes("http") && !taglineMatch[1]!.includes("badge")) {
+      return taglineMatch[1]!.trim();
     }
 
     // Try Overview/About section
     const overviewMatch = content.match(/##\s*(?:Overview|About|Description)\s*\n+([^\n#]+)/i);
     if (overviewMatch) {
-      return cleanMarkdown(overviewMatch[1]).slice(0, 200);
+      return cleanMarkdown(overviewMatch[1]!).slice(0, 200);
     }
 
     // Fall back to first paragraph
@@ -349,7 +351,7 @@ function detectProjectName(root: string): string {
     try {
       const content = readFileSync(cargoPath, "utf-8");
       const match = content.match(/name\s*=\s*"([^"]+)"/);
-      if (match) return match[1];
+      if (match) return match[1]!;
     } catch {}
   }
 

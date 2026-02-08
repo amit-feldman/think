@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
-import { thinkPath, CONFIG } from "../../core/config";
+import { thinkPath, CONFIG } from "../../core/config.ts";
 
 interface SearchProps {
   onClose: () => void;
@@ -22,7 +22,6 @@ const searchFiles = [
   { name: "patterns", path: CONFIG.files.patterns },
   { name: "anti-patterns", path: CONFIG.files.antiPatterns },
   { name: "learnings", path: CONFIG.files.learnings },
-  { name: "corrections", path: CONFIG.files.corrections },
   { name: "subagents", path: CONFIG.files.subagents },
   { name: "workflows", path: CONFIG.files.workflows },
 ];
@@ -32,6 +31,7 @@ export function Search({ onClose, height = 20 }: SearchProps) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selected, setSelected] = useState(0);
   const [searching, setSearching] = useState(false);
+  const maxResults = Math.max(3, height - 6);
 
   useInput((input, key) => {
     if (key.escape) {
@@ -74,22 +74,22 @@ export function Search({ onClose, height = 20 }: SearchProps) {
       });
     }
 
-    setResults(found.slice(0, 15));
+    setResults(found.slice(0, maxResults));
     setSelected(0);
     setSearching(false);
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1}>
+    <Box flexDirection="column" padding={1} height={height}>
       <Box marginBottom={1}>
-        <Text bold color="cyan">Search</Text>
+        <Text color="cyan" bold>Search</Text>
         {results.length > 0 && (
-          <Text color="gray"> ({results.length} results)</Text>
+          <Text dimColor> ({results.length} results)</Text>
         )}
       </Box>
 
       <Box marginBottom={1}>
-        <Text color="cyan">▸ </Text>
+        <Text color="cyan">{"\u25b8"} </Text>
         <TextInput
           value={query}
           onChange={handleSearch}
@@ -97,20 +97,20 @@ export function Search({ onClose, height = 20 }: SearchProps) {
         />
       </Box>
 
-      {searching && <Text color="gray">Searching...</Text>}
+      {searching && <Text dimColor>Searching...</Text>}
 
       {results.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column">
           {results.map((r, i) => (
             <Box key={`${r.file}-${r.line}`}>
-              <Text color={i === selected ? "cyan" : "gray"}>
-                {i === selected ? "▸ " : "  "}
+              <Text color={i === selected ? "cyan" : undefined} dimColor={i !== selected}>
+                {i === selected ? "\u25b8 " : "  "}
               </Text>
               <Text color="yellow">{r.file}</Text>
-              <Text color="gray">:{r.line} </Text>
-              <Text color={i === selected ? "white" : "gray"}>
-                {r.content.length > 50
-                  ? r.content.substring(0, 50) + "..."
+              <Text dimColor>:{r.line} </Text>
+              <Text color={i === selected ? "white" : undefined} dimColor={i !== selected}>
+                {r.content.length > 60
+                  ? r.content.substring(0, 60) + "..."
                   : r.content}
               </Text>
             </Box>
@@ -119,11 +119,11 @@ export function Search({ onClose, height = 20 }: SearchProps) {
       )}
 
       {query.length >= 2 && results.length === 0 && !searching && (
-        <Text color="gray">No results found</Text>
+        <Text dimColor>No results found</Text>
       )}
 
       <Box marginTop={1}>
-        <Text color="gray">↑↓: navigate | Esc: close</Text>
+        <Text dimColor>{"\u2191\u2193"}: navigate | Esc: close</Text>
       </Box>
     </Box>
   );

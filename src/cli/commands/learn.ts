@@ -1,19 +1,15 @@
 import { existsSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 import chalk from "chalk";
-import { CONFIG, thinkPath } from "../../core/config";
-import { addLearning } from "../../core/dedup";
-import { syncCommand } from "./sync";
+import { CONFIG, thinkPath } from "../../core/config.ts";
+import { addLearning, extractLearnings } from "../../core/dedup.ts";
+import { generatePlugin } from "../../core/generator.ts";
 
-/**
- * Add a new learning with deduplication
- */
-export async function learnCommand(
-  learning: string,
-  options: { noSync?: boolean }
-): Promise<void> {
+export async function learnCommand(learning: string): Promise<void> {
   if (!existsSync(CONFIG.thinkDir)) {
-    console.log(chalk.red("~/.think not found. Run `think init` first."));
+    console.log(
+      chalk.red(`  ~/.think not found. Run ${chalk.bold("think setup")} first.`)
+    );
     process.exit(1);
   }
 
@@ -29,22 +25,27 @@ export async function learnCommand(
   const result = addLearning(content, learning);
 
   if (!result.added) {
-    console.log(chalk.yellow("Similar learning already exists:"));
-    console.log(chalk.dim(`  "${result.similar}"`));
-    console.log();
-    console.log("Learning not added (duplicate detected).");
+    console.log(
+      `  ${chalk.yellow("\u25C6")} Similar learning already exists:`
+    );
+    console.log(chalk.dim(`    "${result.similar}"`));
     return;
   }
 
   // Write updated content
   await writeFile(learningsPath, result.newContent);
 
-  console.log(chalk.green("Learning added:"));
-  console.log(chalk.dim(`  "${learning}"`));
+  // Count total learnings
+  const total = extractLearnings(result.newContent).length;
 
-  // Auto-sync unless disabled
-  if (!options.noSync) {
-    console.log();
-    await syncCommand();
-  }
+  console.log(
+    `  ${chalk.cyan("\u25C6")} Added learning (${chalk.bold(String(total))} total)`
+  );
+
+  // Auto-sync
+  await generatePlugin();
+
+  console.log(
+    `  ${chalk.cyan("\u25C6")} Synced ~/.claude/CLAUDE.md`
+  );
 }

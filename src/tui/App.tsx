@@ -1,37 +1,27 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import { Navigation } from "./components/Navigation";
-import { Profile } from "./components/Profile";
-import { Preferences } from "./components/Preferences";
-import { Memory } from "./components/Memory";
-import { Permissions } from "./components/Permissions";
-import { Skills } from "./components/Skills";
-import { Agents } from "./components/Agents";
-import { Automation } from "./components/Automation";
-import { Help } from "./components/Help";
-import { StatusBar } from "./components/StatusBar";
-import { QuickActions } from "./components/QuickActions";
-import { Preview } from "./components/Preview";
-import { Search } from "./components/Search";
-import { ProfileSwitcher } from "./components/ProfileSwitcher";
-import { FullScreen, useTerminalSize } from "./components/FullScreen";
+import { Navigation, sections } from "./components/Navigation.tsx";
+import type { Section } from "./components/Navigation.tsx";
+import { Profile } from "./components/Profile.tsx";
+import { Preferences } from "./components/Preferences.tsx";
+import { Memory } from "./components/Memory.tsx";
+import { Skills } from "./components/Skills.tsx";
+import { Agents } from "./components/Agents.tsx";
+import { Automation } from "./components/Automation.tsx";
+import { Help } from "./components/Help.tsx";
+import { StatusBar } from "./components/StatusBar.tsx";
+import { Preview } from "./components/Preview.tsx";
+import { Search } from "./components/Search.tsx";
+import { ProfileSwitcher } from "./components/ProfileSwitcher.tsx";
+import { FullScreen, useTerminalSize } from "./components/FullScreen.tsx";
 import { existsSync, readdirSync } from "fs";
+import { readFile } from "fs/promises";
 import { spawn } from "child_process";
-import { CONFIG, getActiveProfile } from "../core/config";
-import { switchProfile } from "../core/profiles";
-import { generatePlugin } from "../core/generator";
+import { CONFIG, getActiveProfile, estimateTokens, formatTokens } from "../core/config.ts";
+import { switchProfile } from "../core/profiles.ts";
+import { generatePlugin } from "../core/generator.ts";
 
-// Note: "help" is handled as a modal, not a navigation section
-type Section =
-  | "profile"
-  | "preferences"
-  | "memory"
-  | "permissions"
-  | "skills"
-  | "agents"
-  | "automation";
-
-type Modal = "none" | "help" | "actions" | "preview" | "search" | "profiles";
+type Modal = "none" | "help" | "preview" | "search" | "profiles";
 
 export function App() {
   const { exit } = useApp();
@@ -41,19 +31,27 @@ export function App() {
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [initialized, setInitialized] = useState(false);
   const [activeProfile, setActiveProfile] = useState<string>(getActiveProfile());
+  const [tokenCount, setTokenCount] = useState<string>("");
   const isExitingRef = useRef(false);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isNarrow = width < 80;
+  // Load token count
+  useEffect(() => {
+    loadTokenCount();
+  }, [activeProfile]);
+
+  async function loadTokenCount() {
+    if (existsSync(CONFIG.claudeMdPath)) {
+      const content = await readFile(CONFIG.claudeMdPath, "utf-8");
+      setTokenCount(formatTokens(estimateTokens(content)));
+    }
+  }
 
   // Calculate content height
-  // Banner: 5 lines (spacer + 3 + margin), compact: 2 lines
-  const hasBanner = width >= 44;
-  const headerHeight = hasBanner ? 5 : 2;
-  // total - header - nav(1) - borders(2) - status(3) - footer(1) - padding(2)
-  const contentHeight = Math.max(5, height - headerHeight - 9);
+  // Header: 1 line, nav: 2 lines (labels + underline), status: 1 line, padding: 2 (top/bottom)
+  const contentHeight = Math.max(5, height - 6);
 
   useEffect(() => {
-    // Check if ~/.think exists and has profiles
     if (!existsSync(CONFIG.thinkDir)) {
       setInitialized(false);
       return;
@@ -62,14 +60,22 @@ export function App() {
       setInitialized(false);
       return;
     }
-    // Check if at least one profile exists
-    const profiles = readdirSync(CONFIG.profilesDir, { withFileTypes: true })
-      .filter(e => e.isDirectory());
+    const profiles = readdirSync(CONFIG.profilesDir, { withFileTypes: true }).filter(
+      (e) => e.isDirectory(),
+    );
     setInitialized(profiles.length > 0);
   }, []);
 
+  // Auto-sync on unmount
+  useEffect(() => {
+    return () => {
+      if (initialized) {
+        generatePlugin().catch(() => {});
+      }
+    };
+  }, [initialized]);
+
   useInput((input, key) => {
-    // Global shortcuts (when no modal open)
     if (modal !== "none") return;
 
     if (input === "q" || (key.ctrl && input === "c")) {
@@ -78,12 +84,6 @@ export function App() {
     }
     if (input === "?") {
       setModal("help");
-    }
-    if (key.ctrl && input === "s") {
-      setModal("actions");
-    }
-    if (input === "a") {
-      setModal("actions");
     }
     if (input === "p") {
       setModal("preview");
@@ -94,11 +94,43 @@ export function App() {
     if (input === "P") {
       setModal("profiles");
     }
+    if (input === "s") {
+      handleSync();
+    }
+
+    // Tab/Shift+Tab to cycle sections
+    if (key.tab) {
+      const currentIndex = sections.findIndex((s) => s.key === section);
+      const nextIndex = key.shift
+        ? (currentIndex - 1 + sections.length) % sections.length
+        : (currentIndex + 1) % sections.length;
+      setSection(sections[nextIndex]!.key);
+    }
+
+    // Number keys for quick navigation
+    const num = parseInt(input);
+    if (num >= 1 && num <= sections.length) {
+      setSection(sections[num - 1]!.key);
+    }
   });
 
   function handleMessage(msg: string) {
+    if (statusTimerRef.current) {
+      clearTimeout(statusTimerRef.current);
+    }
     setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(undefined), 3000);
+    statusTimerRef.current = setTimeout(() => setStatusMessage(undefined), 3000);
+  }
+
+  async function handleSync() {
+    handleMessage("Syncing...");
+    try {
+      await generatePlugin();
+      handleMessage("Synced successfully");
+      await loadTokenCount();
+    } catch {
+      handleMessage("Sync failed");
+    }
   }
 
   async function handleProfileSwitch(name: string) {
@@ -111,18 +143,17 @@ export function App() {
       setActiveProfile(name);
       handleMessage(`Switched to profile "${name}"`);
       await generatePlugin();
-      handleMessage(`Switched to profile "${name}" and synced`);
-    } catch (e) {
-      handleMessage(`Failed to switch profile`);
+      await loadTokenCount();
+      handleMessage(`Switched to "${name}" and synced`);
+    } catch {
+      handleMessage("Failed to switch profile");
     }
     setModal("none");
   }
 
   function handleSetup() {
-    // Exit TUI and run setup command
     isExitingRef.current = true;
     exit();
-    // Spawn setup in the same terminal after TUI exits
     setTimeout(() => {
       spawn("think", ["setup"], {
         stdio: "inherit",
@@ -130,27 +161,22 @@ export function App() {
     }, 100);
   }
 
-  // Don't render anything while exiting to avoid flash
+  // Don't render while exiting
   if (isExitingRef.current) {
     return null;
   }
 
+  // First-run: no profiles
   if (!initialized) {
     return (
       <FullScreen>
         <Box flexDirection="column" padding={1} justifyContent="center" alignItems="center" height="100%">
-          <Box
-            borderStyle="round"
-            borderColor="yellow"
-            paddingX={2}
-            paddingY={1}
-            flexDirection="column"
-          >
-            <Text color="yellow" bold>
-              No profiles found
-            </Text>
+          <Box flexDirection="column" paddingX={2} paddingY={1}>
+            <Text color="yellow" bold>No profiles found</Text>
             <Box marginTop={1}>
-              <Text color="gray">Run `think init` to get started.</Text>
+              <Text dimColor>Run </Text>
+              <Text color="cyan">think setup</Text>
+              <Text dimColor> to get started.</Text>
             </Box>
           </Box>
         </Box>
@@ -158,7 +184,7 @@ export function App() {
     );
   }
 
-  // Render modals in fullscreen
+  // Modal: Help (fullscreen)
   if (modal === "help") {
     return (
       <FullScreen>
@@ -167,47 +193,34 @@ export function App() {
     );
   }
 
-  if (modal === "actions") {
-    return (
-      <FullScreen>
-        <Box flexDirection="column" padding={1}>
-          <Header width={width} />
-          <QuickActions
-            onMessage={handleMessage}
-            onClose={() => setModal("none")}
-          />
-        </Box>
-      </FullScreen>
-    );
-  }
-
+  // Modal: Preview (fullscreen)
   if (modal === "preview") {
     return (
       <FullScreen>
-        <Box flexDirection="column" padding={1}>
-          <Header width={width} />
-          <Preview onClose={() => setModal("none")} height={height - 6} />
-        </Box>
+        <Preview onClose={() => setModal("none")} height={height - 2} />
       </FullScreen>
     );
   }
 
+  // Modal: Search (fullscreen)
   if (modal === "search") {
     return (
       <FullScreen>
-        <Box flexDirection="column" padding={1}>
-          <Header width={width} />
-          <Search onClose={() => setModal("none")} height={height - 6} />
-        </Box>
+        <Search onClose={() => setModal("none")} height={height - 2} />
       </FullScreen>
     );
   }
 
+  // Modal: Profile Switcher (fullscreen)
   if (modal === "profiles") {
     return (
       <FullScreen>
         <Box flexDirection="column" padding={1}>
-          <Header width={width} activeProfile={activeProfile} />
+          <CompactHeader
+            width={width}
+            activeProfile={activeProfile}
+            tokenCount={tokenCount}
+          />
           <ProfileSwitcher
             onClose={() => setModal("none")}
             onSwitch={handleProfileSwitch}
@@ -219,95 +232,79 @@ export function App() {
   }
 
   const renderSection = () => {
-    // Use activeProfile as key to force remount when profile changes
+    const isModalActive = modal === "none";
     switch (section) {
       case "profile":
-        return <Profile key={activeProfile} height={contentHeight} />;
+        return <Profile key={activeProfile} height={contentHeight} isActive={isModalActive} />;
       case "preferences":
-        return <Preferences key={activeProfile} height={contentHeight} />;
+        return <Preferences key={activeProfile} height={contentHeight} isActive={isModalActive} />;
       case "memory":
-        return <Memory key={activeProfile} height={contentHeight} />;
-      case "permissions":
-        return <Permissions key={activeProfile} height={contentHeight} />;
+        return <Memory key={activeProfile} height={contentHeight} isActive={isModalActive} />;
       case "skills":
-        return <Skills key={activeProfile} height={contentHeight} />;
+        return <Skills key={activeProfile} height={contentHeight} isActive={isModalActive} />;
       case "agents":
-        return <Agents key={activeProfile} height={contentHeight} />;
+        return <Agents key={activeProfile} height={contentHeight} isActive={isModalActive} />;
       case "automation":
-        return <Automation key={activeProfile} height={contentHeight} />;
+        return <Automation key={activeProfile} height={contentHeight} isActive={isModalActive} />;
       default:
-        return <Profile key={activeProfile} height={contentHeight} />;
+        return <Profile key={activeProfile} height={contentHeight} isActive={isModalActive} />;
     }
   };
 
   return (
     <FullScreen>
       <Box flexDirection="column" padding={1} height="100%">
-        <Header width={width} activeProfile={activeProfile} />
+        {/* Compact header */}
+        <CompactHeader
+          width={width}
+          activeProfile={activeProfile}
+          tokenCount={tokenCount}
+        />
 
+        {/* Navigation tabs */}
         <Navigation currentSection={section} onSectionChange={setSection} />
 
-        <Box
-          flexDirection="column"
-          marginTop={1}
-          borderStyle="single"
-          borderColor="gray"
-          padding={1}
-          flexGrow={1}
-          height={contentHeight + 2}
-        >
+        {/* Content area */}
+        <Box flexDirection="column" flexGrow={1} marginTop={1}>
           {renderSection()}
         </Box>
 
-        <Box marginTop={1}>
-          <StatusBar key={activeProfile} message={statusMessage} />
-        </Box>
-
-        <Box>
-          <Text color="gray">
-            {isNarrow
-              ? "Tab:nav ↑↓:scroll a:act p:prev P:profile /:search ?:help q:quit"
-              : "Tab: sections | ↑↓/jk: scroll | a: actions | p: preview | P: profile | /: search | ?: help | q: quit"}
-          </Text>
-        </Box>
+        {/* Status bar */}
+        <StatusBar message={statusMessage} section={section} />
       </Box>
     </FullScreen>
   );
 }
 
-function Header({ width, showBanner = true, activeProfile }: { width: number; showBanner?: boolean; activeProfile?: string }) {
-  const profileBadge = activeProfile && activeProfile !== "default" ? (
-    <Text color="cyan"> [{activeProfile}]</Text>
-  ) : null;
+function CompactHeader({
+  width,
+  activeProfile,
+  tokenCount,
+}: {
+  width: number;
+  activeProfile: string;
+  tokenCount: string;
+}) {
+  const isNarrow = width < 60;
 
-  // Double-line box banner
-  if (width >= 44 && showBanner) {
-    return (
-      <Box flexDirection="column" marginBottom={1}>
-        <Text> </Text>
-        <Text color="green">╔═══════════════════════════════════════╗</Text>
-        <Text color="green">║  <Text bold>THINK</Text> · <Text color="gray">Personal Context for Claude</Text>  ║</Text>
-        <Text color="green">╚═══════════════════════════════════════╝</Text>
-        {profileBadge && <Box><Text color="gray">Profile:</Text>{profileBadge}</Box>}
-      </Box>
-    );
-  }
-
-  // Compact header for narrow terminals
-  if (width < 35) {
+  if (isNarrow) {
     return (
       <Box marginBottom={1}>
-        <Text color="green" bold>think</Text>
-        {profileBadge}
+        <Text color="cyan" bold>think</Text>
+        {activeProfile !== "default" && (
+          <Text dimColor> · {activeProfile}</Text>
+        )}
       </Box>
     );
   }
 
   return (
     <Box marginBottom={1}>
-      <Text color="green" bold>think</Text>
-      <Text color="gray"> · Personal Context for Claude</Text>
-      {profileBadge}
+      <Text color="cyan" bold>think</Text>
+      <Text dimColor>
+        {" · "}profile: {activeProfile}
+        {tokenCount ? ` · ~${tokenCount} tokens` : ""}
+      </Text>
     </Box>
   );
 }

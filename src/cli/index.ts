@@ -1,25 +1,9 @@
 #!/usr/bin/env bun
+import { existsSync } from "fs";
 import { Command } from "commander";
-import { initCommand } from "./commands/init";
-import { syncCommand } from "./commands/sync";
-import { learnCommand } from "./commands/learn";
-import { statusCommand } from "./commands/status";
-import { profileCommand } from "./commands/profile";
-import {
-  profileListCommand,
-  profileUseCommand,
-  profileCreateCommand,
-  profileDeleteCommand,
-} from "./commands/profile-commands";
-import { editCommand } from "./commands/edit";
-import { allowCommand } from "./commands/allow";
-import { reviewCommand } from "./commands/review";
-import { treeCommand } from "./commands/tree";
-import { projectLearnCommand } from "./commands/project-learn";
-import { helpCommand } from "./commands/help";
-import { setupCommand } from "./commands/setup";
-import { printBanner } from "../core/banner";
-import { launchTui } from "../tui";
+import { CONFIG } from "../core/config.ts";
+import { ensureProfilesStructure, listProfiles } from "../core/profiles.ts";
+import { launchTui } from "../tui/index.tsx";
 import pkg from "../../package.json";
 
 const program = new Command();
@@ -29,130 +13,73 @@ program
   .description("Personal context manager for Claude")
   .version(pkg.version);
 
-// Initialize ~/.think
-program
-  .command("init")
-  .description("Initialize ~/.think with starter templates")
-  .option("-f, --force", "Reinitialize even if already exists")
-  .action(initCommand);
-
-// Sync to Claude plugin
-program
-  .command("sync")
-  .description("Regenerate Claude plugin from ~/.think")
-  .action(syncCommand);
-
-// Add a learning
-program
-  .command("learn <learning>")
-  .description("Add a new learning")
-  .option("--no-sync", "Don't auto-sync after adding")
-  .action(learnCommand);
-
-// Show status
-program
-  .command("status")
-  .description("Show current think status")
-  .action(statusCommand);
-
-// Profile management commands
-const profileCmd = program
-  .command("profile")
-  .description("Manage profiles");
-
-profileCmd
-  .command("list")
-  .description("List all profiles")
-  .action(profileListCommand);
-
-profileCmd
-  .command("use <name>")
-  .description("Switch to a profile")
-  .action(profileUseCommand);
-
-profileCmd
-  .command("create <name>")
-  .description("Create a new profile")
-  .option("--from <profile>", "Copy from existing profile")
-  .action(profileCreateCommand);
-
-profileCmd
-  .command("delete <name>")
-  .description("Delete a profile")
-  .action(profileDeleteCommand);
-
-profileCmd
-  .command("edit")
-  .description("Open profile.md in $EDITOR")
-  .action(profileCommand);
-
-// Also allow `think profile` with no subcommand to edit
-profileCmd.action(profileCommand);
-
-// Edit any file
-program
-  .command("edit <file>")
-  .description("Open a ~/.think file in $EDITOR")
-  .action(editCommand);
-
-// Allow a command
-program
-  .command("allow <command>")
-  .description("Add a command to the allowed list")
-  .option("--no-sync", "Don't auto-sync after adding")
-  .action(allowCommand);
-
-// Review pending learnings
-program
-  .command("review")
-  .description("Review pending learnings from Claude")
-  .action(reviewCommand);
-
-// File tree preview
-program
-  .command("tree")
-  .description("Preview file tree for current directory")
-  .action(treeCommand);
-
-// Project command - generate project CLAUDE.md
-program
-  .command("project")
-  .description("Generate CLAUDE.md for current project")
-  .alias("project learn")
-  .option("-f, --force", "Overwrite existing CLAUDE.md")
-  .action(projectLearnCommand);
-
-// Help command
-program
-  .command("help")
-  .description("Show help and command reference")
-  .action(helpCommand);
-
 // Setup wizard
 program
   .command("setup")
   .description("Interactive profile setup wizard")
-  .action(setupCommand);
+  .option("-q, --quick", "Accept role-based defaults after identity phase")
+  .action(async (options: { quick?: boolean }) => {
+    const { setupCommand } = await import("./commands/setup.ts");
+    await setupCommand(options);
+  });
 
-// Default action (no subcommand) - launch TUI
+// Switch profile
+program
+  .command("switch <profile>")
+  .description("Switch profile and auto-sync")
+  .action(async (profileName: string) => {
+    const { switchCommand } = await import("./commands/switch.ts");
+    await switchCommand(profileName);
+  });
+
+// Project context
+program
+  .command("context")
+  .description("Scan project and write project CLAUDE.md")
+  .option("-b, --budget <tokens>", "Token budget (e.g. 8000)")
+  .option("-f, --force", "Force regeneration")
+  .option("-n, --dry-run", "Show breakdown without writing")
+  .action(async (options: { budget?: string; force?: boolean; dryRun?: boolean }) => {
+    const { contextCommand } = await import("./commands/context.ts");
+    await contextCommand(options);
+  });
+
+// Quick-add learning
+program
+  .command("learn <text>")
+  .description("Quick-add a learning and auto-sync")
+  .action(async (text: string) => {
+    const { learnCommand } = await import("./commands/learn.ts");
+    await learnCommand(text);
+  });
+
+// Status
+program
+  .command("status")
+  .description("Show active profile, token counts, project context status")
+  .action(async () => {
+    const { statusCommand } = await import("./commands/status.ts");
+    await statusCommand();
+  });
+
+// Default action (no subcommand)
 program.action(async () => {
-  // Check if we have a TTY (required for TUI)
-  if (!process.stdin.isTTY) {
-    printBanner();
-    console.log("TUI requires an interactive terminal.\n");
-    console.log("Available commands:");
-    console.log("  think init      Initialize ~/.think");
-    console.log("  think sync      Sync to Claude plugin");
-    console.log("  think status    Show status");
-    console.log("  think learn     Add a learning");
-    console.log("  think review    Review pending learnings");
-    console.log("  think profile   Edit profile");
-    console.log("  think edit      Edit any file");
-    console.log("  think allow     Allow a command");
-    console.log();
+  // First-run: if ~/.think doesn't exist or has no profiles, auto-init and launch setup
+  if (!existsSync(CONFIG.thinkDir) || listProfiles().length === 0) {
+    ensureProfilesStructure();
+    const { setupCommand } = await import("./commands/setup.ts");
+    await setupCommand({});
     return;
   }
-  launchTui();
+
+  // TTY available: launch TUI
+  if (process.stdin.isTTY) {
+    await launchTui();
+    return;
+  }
+
+  // Non-TTY: show help
+  program.help();
 });
 
 program.parse();

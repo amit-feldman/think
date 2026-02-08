@@ -16,10 +16,12 @@ export const CONFIG = {
   // Output file (global CLAUDE.md that Claude reads automatically)
   claudeMdPath: join(homedir(), ".claude", "CLAUDE.md"),
 
+  // Project context output directory
+  claudeProjectsDir: join(homedir(), ".claude", "projects"),
+
   // Subdirectories in each profile
   dirs: {
     preferences: "preferences",
-    permissions: "permissions",
     skills: "skills",
     agents: "agents",
     memory: "memory",
@@ -33,25 +35,41 @@ export const CONFIG = {
     tools: "preferences/tools.md",
     patterns: "preferences/patterns.md",
     antiPatterns: "preferences/anti-patterns.md",
-    allowedCommands: "permissions/allowed-commands.md",
-    settings: "permissions/settings.md",
     learnings: "memory/learnings.md",
-    corrections: "memory/corrections.md",
-    pending: "memory/pending.md",
     subagents: "automation/subagents.md",
     workflows: "automation/workflows.md",
     fileTree: "templates/file-tree.md",
   },
 
-  // Plugin output files
-  plugin: {
-    manifest: "plugin.json",
-    claudeMd: "CLAUDE.md",
-  },
-
-  // Initial profile name created by `think init`
+  // Initial profile name created during first-run
   defaultProfile: "default",
 } as const;
+
+/**
+ * Get the project CLAUDE.md path for a given project directory.
+ * Uses the same path convention Claude Code uses: ~/.claude/projects/<absolute-path>/CLAUDE.md
+ */
+export function getProjectClaudeMdPath(projectDir: string): string {
+  // Convert absolute path to a safe directory name by replacing path separators
+  const safePath = projectDir.replace(/^\//, "").replace(/\//g, "-");
+  return join(CONFIG.claudeProjectsDir, safePath, "CLAUDE.md");
+}
+
+/**
+ * Estimate token count from text (same heuristic used throughout)
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Format token count for display
+ */
+export function formatTokens(tokens: number): string {
+  if (tokens < 1000) return tokens.toString();
+  if (tokens < 10000) return `${(tokens / 1000).toFixed(1)}k`;
+  return `${Math.round(tokens / 1000)}k`;
+}
 
 /**
  * Get the currently active profile name
@@ -69,7 +87,7 @@ export function getActiveProfile(): string {
     const entries = readdirSync(CONFIG.profilesDir, { withFileTypes: true });
     const profiles = entries.filter(e => e.isDirectory() && isValidProfileName(e.name));
     if (profiles.length > 0) {
-      return profiles[0].name;
+      return profiles[0]!.name;
     }
   }
   return CONFIG.defaultProfile;
@@ -79,6 +97,9 @@ export function getActiveProfile(): string {
  * Set the active profile
  */
 export function setActiveProfile(name: string): void {
+  if (!isValidProfileName(name)) {
+    throw new Error(`Invalid profile name "${name}"`);
+  }
   writeFileSync(CONFIG.activeProfileFile, name);
 }
 

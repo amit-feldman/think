@@ -1,78 +1,78 @@
 import { existsSync } from "fs";
-import { readFile, readdir, stat } from "fs/promises";
+import { readFile } from "fs/promises";
 import chalk from "chalk";
-import { CONFIG, thinkPath, getActiveProfile } from "../../core/config";
-import { extractLearnings } from "../../core/dedup";
-import { printBanner } from "../../core/banner";
+import {
+  CONFIG,
+  getActiveProfile,
+  thinkPath,
+  getProjectClaudeMdPath,
+  estimateTokens,
+  formatTokens,
+} from "../../core/config.ts";
+import { parseMarkdown } from "../../core/parser.ts";
+import { extractLearnings } from "../../core/dedup.ts";
 
-/**
- * Show current status of think configuration
- */
 export async function statusCommand(): Promise<void> {
-  printBanner();
-
-  // Check initialization
   if (!existsSync(CONFIG.thinkDir)) {
-    console.log(chalk.red("Not initialized. Run `think init` first."));
-    return;
+    console.log(
+      chalk.red(`  ~/.think not found. Run ${chalk.bold("think setup")} first.`)
+    );
+    process.exit(1);
   }
 
-  console.log(chalk.green("✓ ~/.think initialized"));
+  const profileName = getActiveProfile();
 
-  // Show active profile
-  const profile = getActiveProfile();
-  console.log(`Profile: ${chalk.cyan(profile)}`);
+  // Read profile frontmatter for style/role
+  const profilePath = thinkPath(CONFIG.files.profile);
+  const profile = await parseMarkdown(profilePath);
+  const role = profile?.frontmatter?.role as string | undefined;
+  const style = profile?.frontmatter?.style as string | undefined;
 
-  // Check CLAUDE.md and show token estimate
+  // Profile line
+  const profileMeta = [profileName, style, role].filter(Boolean).join(" \u00B7 ");
+  console.log(`  ${chalk.dim("Profile".padEnd(12))}${chalk.bold(profileMeta)}`);
+
+  // Personal CLAUDE.md
   if (existsSync(CONFIG.claudeMdPath)) {
     const content = await readFile(CONFIG.claudeMdPath, "utf-8");
-    const tokens = Math.ceil(content.length / 4);
-    console.log(chalk.green(`✓ CLAUDE.md generated (~${formatTokens(tokens)} tokens)`));
+    const tokens = estimateTokens(content);
+    console.log(
+      `  ${chalk.dim("Personal".padEnd(12))}~/.claude/CLAUDE.md ${chalk.dim(`(${formatTokens(tokens)} tokens)`)}`
+    );
   } else {
-    console.log(chalk.yellow("○ CLAUDE.md not generated. Run `think sync`"));
+    console.log(
+      `  ${chalk.dim("Personal".padEnd(12))}${chalk.yellow("not synced")} ${chalk.dim("- run think setup")}`
+    );
   }
 
-  console.log();
+  // Project context
+  const projectDir = process.cwd();
+  const projectClaudeMdPath = getProjectClaudeMdPath(projectDir);
 
-  // Count learnings
+  if (existsSync(projectClaudeMdPath)) {
+    const content = await readFile(projectClaudeMdPath, "utf-8");
+    const tokens = estimateTokens(content);
+    const dirName = projectDir.split("/").pop() || "project";
+    const shortPath = projectClaudeMdPath.replace(process.env.HOME || "~", "~");
+    console.log(
+      `  ${chalk.dim("Project".padEnd(12))}${chalk.bold(dirName)} \u00B7 ${shortPath} ${chalk.dim(`(${formatTokens(tokens)} tokens)`)}`
+    );
+  } else {
+    const dirName = projectDir.split("/").pop() || "project";
+    console.log(
+      `  ${chalk.dim("Project".padEnd(12))}${dirName} ${chalk.dim("- run think context")}`
+    );
+  }
+
+  // Learnings count
   const learningsPath = thinkPath(CONFIG.files.learnings);
+  let learningCount = 0;
   if (existsSync(learningsPath)) {
     const content = await readFile(learningsPath, "utf-8");
-    const learnings = extractLearnings(content);
-    console.log(`Learnings: ${chalk.cyan(learnings.length)}`);
+    learningCount = extractLearnings(content).length;
   }
 
-  // Count pending
-  const pendingPath = thinkPath(CONFIG.files.pending);
-  if (existsSync(pendingPath)) {
-    const content = await readFile(pendingPath, "utf-8");
-    const pending = extractLearnings(content);
-    if (pending.length > 0) {
-      console.log(`Pending review: ${chalk.yellow(pending.length)}`);
-    } else {
-      console.log(`Pending review: ${chalk.dim("0")}`);
-    }
-  }
-
-  // Count skills
-  const skillsDir = thinkPath(CONFIG.dirs.skills);
-  if (existsSync(skillsDir)) {
-    const skills = (await readdir(skillsDir)).filter((f) => f.endsWith(".md"));
-    console.log(`Custom skills: ${chalk.cyan(skills.length)}`);
-  }
-
-  // Count agents
-  const agentsDir = thinkPath(CONFIG.dirs.agents);
-  if (existsSync(agentsDir)) {
-    const agents = (await readdir(agentsDir)).filter((f) => f.endsWith(".md"));
-    console.log(`Custom agents: ${chalk.cyan(agents.length)}`);
-  }
-
-  console.log();
-}
-
-function formatTokens(tokens: number): string {
-  if (tokens < 1000) return tokens.toString();
-  if (tokens < 10000) return `${(tokens / 1000).toFixed(1)}k`;
-  return `${Math.round(tokens / 1000)}k`;
+  console.log(
+    `  ${chalk.dim("Learnings".padEnd(12))}${learningCount}`
+  );
 }

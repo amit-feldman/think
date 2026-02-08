@@ -1,493 +1,718 @@
-import { writeFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import * as p from "@clack/prompts";
 import chalk from "chalk";
-import { CONFIG, thinkPath } from "../../core/config";
-import { printBanner } from "../../core/banner";
-import { syncCommand } from "./sync";
+import { CONFIG, thinkPath, estimateTokens, formatTokens } from "../../core/config.ts";
+import { ensureProfilesStructure } from "../../core/profiles.ts";
+import { generatePlugin } from "../../core/generator.ts";
+import { detectProject } from "../../core/project-detect.ts";
+import type { ProjectInfo } from "../../core/project-detect.ts";
 
-/**
- * Interactive profile setup wizard
- */
-export async function setupCommand(): Promise<void> {
-  if (!existsSync(CONFIG.thinkDir)) {
-    console.log(chalk.red("~/.think not found. Run `think init` first."));
-    process.exit(1);
+// ── Description maps ──────────────────────────────────────────────
+
+const styleDescriptions: Record<string, string[]> = {
+  direct: [
+    "Be direct and minimal - no fluff, just answers and code",
+    "Skip lengthy reasoning unless asked",
+    "Don't explain obvious things",
+  ],
+  conversational: [
+    "Be friendly but efficient",
+    "Brief explanations when helpful",
+    "Keep a conversational tone",
+  ],
+  detailed: [
+    "Provide thorough explanations",
+    "Include context and reasoning",
+    "Explain trade-offs and alternatives",
+  ],
+};
+
+const roleDescriptions: Record<string, string> = {
+  "senior-dev": "Senior developer - experienced and autonomous, prefers concise guidance",
+  "mid-dev": "Mid-level developer - competent but appreciates context on complex topics",
+  "junior-dev": "Junior developer - learning, benefits from more explanation and examples",
+  founder: "Founder/Tech Lead - focused on shipping, pragmatic decisions over perfect code",
+  student: "Student - learning fundamentals, explain concepts when relevant",
+  hobbyist: "Hobbyist - exploring for fun, balance learning with getting things done",
+};
+
+const personalityDescriptions: Record<string, string[]> = {
+  "pair-programmer": [
+    "Act as a pair programmer - think out loud, collaborate on solutions",
+    "Discuss trade-offs and alternatives when relevant",
+    "Catch potential issues early, suggest improvements as we go",
+  ],
+  "senior-dev": [
+    "Act as a senior developer - give direction, review approaches",
+    "Point out potential issues and better patterns",
+    "Be opinionated when it matters, flexible when it doesn't",
+  ],
+  assistant: [
+    "Act as an efficient assistant - execute tasks with minimal chatter",
+    "Ask clarifying questions only when truly needed",
+    "Focus on delivering what was asked",
+  ],
+  mentor: [
+    "Act as a mentor - teach concepts, explain the 'why'",
+    "Use opportunities to share knowledge",
+    "Suggest learning resources when helpful",
+  ],
+  "rubber-duck": [
+    "Act as a rubber duck - help me think through problems",
+    "Ask probing questions rather than giving immediate answers",
+    "Help me discover solutions myself",
+  ],
+};
+
+const planningDescriptions: Record<string, string> = {
+  "plan-first": "Discuss architecture and approach before writing code",
+  iterate: "Start with a rough plan, refine as we go",
+  "dive-in": "Start coding quickly, figure out structure as needed",
+};
+
+const testingDescriptions: Record<string, string> = {
+  tdd: "Write tests first (TDD), then implement",
+  "test-after": "Write tests after implementation",
+  "critical-paths": "Test critical paths and edge cases",
+  minimal: "Minimal testing - add tests when necessary",
+};
+
+const reviewDescriptions: Record<string, string> = {
+  "review-before-commit": "Review changes before committing - catch issues early",
+  "review-on-request": "Review code when explicitly asked",
+  "self-review": "I review my own code, no automatic reviews needed",
+};
+
+const gitDescriptions: Record<string, string> = {
+  "small-commits": "Small, atomic commits - easy to review and revert",
+  "feature-branches": "Feature branches with squash merges",
+  "trunk-based": "Trunk-based development with feature flags",
+  flexible: "Flexible git workflow based on project needs",
+};
+
+const docDescriptions: Record<string, string> = {
+  inline: "Document with inline comments as code is written",
+  "readme-driven": "README-driven development - docs first",
+  minimal: "Minimal documentation - code should be self-documenting",
+  "on-request": "Add documentation when requested",
+};
+
+const debugDescriptions: Record<string, string> = {
+  systematic: "Debug systematically - isolate, reproduce, trace",
+  hypothesis: "Hypothesis-driven debugging - test likely causes first",
+  printf: "Printf debugging - add logs and observe",
+  "whatever-works": "Whatever works to fix the issue quickly",
+};
+
+const refactorDescriptions: Record<string, string> = {
+  proactive: "Proactively suggest refactoring opportunities",
+  "on-request": "Refactor only when asked",
+  "boy-scout": "Boy scout rule - leave code better than you found it",
+  "if-broken": "Don't refactor working code unless necessary",
+};
+
+// ── Role-based workflow defaults ──────────────────────────────────
+
+interface WorkflowDefaults {
+  planning: string;
+  testing: string;
+  review: string;
+  git: string;
+  docs: string;
+  debug: string;
+  refactor: string;
+}
+
+const roleWorkflowDefaults: Record<string, WorkflowDefaults> = {
+  "senior-dev": {
+    planning: "plan-first",
+    testing: "tdd",
+    review: "review-before-commit",
+    git: "small-commits",
+    docs: "minimal",
+    debug: "systematic",
+    refactor: "boy-scout",
+  },
+  "mid-dev": {
+    planning: "iterate",
+    testing: "test-after",
+    review: "review-before-commit",
+    git: "feature-branches",
+    docs: "inline",
+    debug: "hypothesis",
+    refactor: "on-request",
+  },
+  "junior-dev": {
+    planning: "plan-first",
+    testing: "test-after",
+    review: "review-before-commit",
+    git: "feature-branches",
+    docs: "inline",
+    debug: "systematic",
+    refactor: "proactive",
+  },
+  founder: {
+    planning: "dive-in",
+    testing: "critical-paths",
+    review: "self-review",
+    git: "trunk-based",
+    docs: "minimal",
+    debug: "whatever-works",
+    refactor: "if-broken",
+  },
+  student: {
+    planning: "plan-first",
+    testing: "test-after",
+    review: "review-on-request",
+    git: "feature-branches",
+    docs: "inline",
+    debug: "systematic",
+    refactor: "proactive",
+  },
+  hobbyist: {
+    planning: "iterate",
+    testing: "minimal",
+    review: "self-review",
+    git: "flexible",
+    docs: "on-request",
+    debug: "printf",
+    refactor: "if-broken",
+  },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+function handleCancel(): never {
+  p.cancel("Setup cancelled");
+  process.exit(0);
+}
+
+function guard<T>(value: T | symbol): T {
+  if (p.isCancel(value)) handleCancel();
+  return value as T;
+}
+
+function phase(n: number, label: string): void {
+  p.note(chalk.bold(`[${n}/5] ${label}`));
+}
+
+async function selectWithOther(
+  message: string,
+  options: { value: string; label: string; hint?: string }[],
+  initialValue?: string
+): Promise<string> {
+  const allOptions = [...options, { value: "__other__", label: "Other" }];
+  const selected = guard(
+    await p.select({ message, options: allOptions, initialValue })
+  ) as string;
+
+  if (selected === "__other__") {
+    const custom = guard(
+      await p.text({ message: `Enter custom value:`, placeholder: "..." })
+    ) as string;
+    return custom;
   }
+  return selected;
+}
 
-  printBanner();
+async function multiselectWithOther(
+  message: string,
+  options: { value: string; label: string; hint?: string }[],
+  required = false
+): Promise<string[]> {
+  const allOptions = [...options, { value: "__other__", label: "Other" }];
+  const selected = guard(
+    await p.multiselect({ message, options: allOptions, required })
+  ) as string[];
+
+  if (selected.includes("__other__")) {
+    const custom = guard(
+      await p.text({
+        message: `Enter custom values (comma-separated):`,
+        placeholder: "e.g. Tool1, Tool2",
+      })
+    ) as string;
+    const customValues = custom
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return [...selected.filter((s) => s !== "__other__"), ...customValues];
+  }
+  return selected;
+}
+
+// ── Main setup command ────────────────────────────────────────────
+
+export async function setupCommand(options: { quick?: boolean }): Promise<void> {
+  // First-run: auto-init if ~/.think doesn't exist
+  if (!existsSync(CONFIG.thinkDir)) {
+    ensureProfilesStructure();
+  }
 
   p.intro(chalk.bgCyan(chalk.black(" think setup ")));
 
-  const name = await p.text({
-    message: "What's your name?",
-    placeholder: "Your name",
-  });
-  if (p.isCancel(name)) return handleCancel();
+  // ═════════════════════════════════════════════════════════════════
+  // Phase 1: Identity
+  // ═════════════════════════════════════════════════════════════════
+  phase(1, "Identity");
 
-  const style = await p.select({
-    message: "What communication style do you prefer?",
-    options: [
-      { value: "direct", label: "Direct & minimal", hint: "no fluff, just answers" },
-      { value: "conversational", label: "Conversational", hint: "friendly but efficient" },
-      { value: "detailed", label: "Detailed", hint: "thorough explanations" },
-    ],
-  });
-  if (p.isCancel(style)) return handleCancel();
+  const name = guard(
+    await p.text({
+      message: "What's your name?",
+      placeholder: "Your name",
+    })
+  ) as string;
 
-  // === PROFILE & PERSONALITY ===
-  p.note("Let's understand who you are and how you work");
-
-  const role = await p.select({
-    message: "What's your role?",
-    options: [
-      { value: "senior-dev", label: "Senior Developer", hint: "experienced, autonomous" },
-      { value: "mid-dev", label: "Mid-level Developer", hint: "growing, some guidance helpful" },
-      { value: "junior-dev", label: "Junior Developer", hint: "learning, more explanation needed" },
-      { value: "founder", label: "Founder / Tech Lead", hint: "building fast, shipping matters" },
-      { value: "student", label: "Student", hint: "learning fundamentals" },
-      { value: "hobbyist", label: "Hobbyist", hint: "exploring for fun" },
-    ],
-  });
-  if (p.isCancel(role)) return handleCancel();
-
-  const claudePersonality = await p.select({
-    message: "How should Claude behave?",
-    options: [
-      { value: "pair-programmer", label: "Pair Programmer", hint: "collaborative, thinks out loud" },
-      { value: "senior-dev", label: "Senior Dev", hint: "gives direction, reviews your approach" },
-      { value: "assistant", label: "Efficient Assistant", hint: "executes tasks, minimal chatter" },
-      { value: "mentor", label: "Mentor", hint: "teaches concepts, explains why" },
-      { value: "rubber-duck", label: "Rubber Duck", hint: "helps you think, asks questions" },
-    ],
-  });
-  if (p.isCancel(claudePersonality)) return handleCancel();
-
-  // === SDLC PREFERENCES ===
-  p.note("How do you like to work through the development lifecycle?");
-
-  const planningApproach = await p.select({
-    message: "Planning approach?",
-    options: [
-      { value: "plan-first", label: "Plan first", hint: "discuss architecture before coding" },
-      { value: "iterate", label: "Iterate", hint: "rough plan, refine as we go" },
-      { value: "dive-in", label: "Dive in", hint: "start coding, figure it out" },
-    ],
-  });
-  if (p.isCancel(planningApproach)) return handleCancel();
-
-  const testingApproach = await p.select({
-    message: "Testing approach?",
-    options: [
-      { value: "tdd", label: "TDD", hint: "write tests first" },
-      { value: "test-after", label: "Test after", hint: "write tests after implementation" },
-      { value: "critical-paths", label: "Critical paths only", hint: "test important stuff" },
-      { value: "minimal", label: "Minimal", hint: "tests when necessary" },
-    ],
-  });
-  if (p.isCancel(testingApproach)) return handleCancel();
-
-  const codeReview = await p.select({
-    message: "Code review preference?",
-    options: [
-      { value: "review-before-commit", label: "Review before commit", hint: "Claude reviews changes" },
-      { value: "review-on-request", label: "On request", hint: "review when asked" },
-      { value: "self-review", label: "Self review", hint: "I review my own code" },
-    ],
-  });
-  if (p.isCancel(codeReview)) return handleCancel();
-
-  const gitWorkflow = await p.select({
-    message: "Git workflow?",
-    options: [
-      { value: "small-commits", label: "Small commits", hint: "atomic, frequent commits" },
-      { value: "feature-branches", label: "Feature branches", hint: "branch per feature, squash merge" },
-      { value: "trunk-based", label: "Trunk-based", hint: "commit to main, feature flags" },
-      { value: "flexible", label: "Flexible", hint: "depends on the project" },
-    ],
-  });
-  if (p.isCancel(gitWorkflow)) return handleCancel();
-
-  const documentationApproach = await p.select({
-    message: "Documentation approach?",
-    options: [
-      { value: "inline", label: "Inline comments", hint: "document as you code" },
-      { value: "readme-driven", label: "README driven", hint: "docs first, then code" },
-      { value: "minimal", label: "Minimal", hint: "self-documenting code" },
-      { value: "on-request", label: "On request", hint: "document when asked" },
-    ],
-  });
-  if (p.isCancel(documentationApproach)) return handleCancel();
-
-  const debuggingStyle = await p.select({
-    message: "Debugging style?",
-    options: [
-      { value: "systematic", label: "Systematic", hint: "isolate, reproduce, trace" },
-      { value: "hypothesis", label: "Hypothesis-driven", hint: "guess likely causes first" },
-      { value: "printf", label: "Printf debugging", hint: "add logs, observe behavior" },
-      { value: "whatever-works", label: "Whatever works", hint: "just fix it" },
-    ],
-  });
-  if (p.isCancel(debuggingStyle)) return handleCancel();
-
-  const refactoringPreference = await p.select({
-    message: "Refactoring preference?",
-    options: [
-      { value: "proactive", label: "Proactive", hint: "Claude suggests improvements" },
-      { value: "on-request", label: "On request", hint: "only when asked" },
-      { value: "boy-scout", label: "Boy scout rule", hint: "leave code better than found" },
-      { value: "if-broken", label: "If it ain't broke...", hint: "don't fix what works" },
-    ],
-  });
-  if (p.isCancel(refactoringPreference)) return handleCancel();
-
-  // === TECH STACK ===
-  p.note("Now let's configure your tech stack");
-
-  const packageManager = await p.select({
-    message: "Preferred package manager?",
-    options: [
-      { value: "bun", label: "Bun" },
-      { value: "pnpm", label: "pnpm" },
-      { value: "npm", label: "npm" },
-      { value: "yarn", label: "yarn" },
-    ],
-  });
-  if (p.isCancel(packageManager)) return handleCancel();
-
-  let bunFeatures: string[] = [];
-  if (packageManager === "bun") {
-    const features = await p.multiselect({
-      message: "Bun features you use?",
+  const role = guard(
+    await p.select({
+      message: "What's your role?",
       options: [
-        { value: "catalog", label: "Dependency catalog" },
-        { value: "workspaces", label: "Bun workspaces" },
-        { value: "macros", label: "Bun macros" },
-        { value: "shell", label: "Bun shell ($``)" },
-        { value: "sqlite", label: "bun:sqlite" },
-        { value: "test", label: "bun test" },
+        { value: "senior-dev", label: "Senior Developer", hint: "experienced, autonomous" },
+        { value: "mid-dev", label: "Mid-level Developer", hint: "growing, some guidance helpful" },
+        { value: "junior-dev", label: "Junior Developer", hint: "learning, more explanation needed" },
+        { value: "founder", label: "Founder / Tech Lead", hint: "building fast, shipping matters" },
+        { value: "student", label: "Student", hint: "learning fundamentals" },
+        { value: "hobbyist", label: "Hobbyist", hint: "exploring for fun" },
       ],
-      required: false,
-    });
-    if (p.isCancel(features)) return handleCancel();
-    bunFeatures = features as string[];
+    })
+  ) as string;
+
+  const claudePersonality = guard(
+    await p.select({
+      message: "How should Claude behave?",
+      options: [
+        { value: "pair-programmer", label: "Pair Programmer", hint: "collaborative, thinks out loud" },
+        { value: "senior-dev", label: "Senior Dev", hint: "gives direction, reviews your approach" },
+        { value: "assistant", label: "Efficient Assistant", hint: "executes tasks, minimal chatter" },
+        { value: "mentor", label: "Mentor", hint: "teaches concepts, explains why" },
+        { value: "rubber-duck", label: "Rubber Duck", hint: "helps you think, asks questions" },
+      ],
+    })
+  ) as string;
+
+  const style = guard(
+    await p.select({
+      message: "Communication style?",
+      options: [
+        { value: "direct", label: "Direct & minimal", hint: "no fluff, just answers" },
+        { value: "conversational", label: "Conversational", hint: "friendly but efficient" },
+        { value: "detailed", label: "Detailed", hint: "thorough explanations" },
+      ],
+    })
+  ) as string;
+
+  // ═════════════════════════════════════════════════════════════════
+  // Phase 2: Workflow (skip if --quick)
+  // ═════════════════════════════════════════════════════════════════
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const defaults = roleWorkflowDefaults[role] ?? roleWorkflowDefaults["senior-dev"]!;
+  let planning = defaults.planning;
+  let testing = defaults.testing;
+  let review = defaults.review;
+  let git = defaults.git;
+  let docs = defaults.docs;
+  let debug = defaults.debug;
+  let refactor = defaults.refactor;
+
+  if (!options.quick) {
+    phase(2, "Workflow");
+
+    planning = guard(
+      await p.select({
+        message: "Planning approach?",
+        initialValue: defaults.planning,
+        options: [
+          { value: "plan-first", label: "Plan first", hint: "discuss architecture before coding" },
+          { value: "iterate", label: "Iterate", hint: "rough plan, refine as we go" },
+          { value: "dive-in", label: "Dive in", hint: "start coding, figure it out" },
+        ],
+      })
+    ) as string;
+
+    testing = guard(
+      await p.select({
+        message: "Testing approach?",
+        initialValue: defaults.testing,
+        options: [
+          { value: "tdd", label: "TDD", hint: "write tests first" },
+          { value: "test-after", label: "Test after", hint: "write tests after implementation" },
+          { value: "critical-paths", label: "Critical paths only", hint: "test important stuff" },
+          { value: "minimal", label: "Minimal", hint: "tests when necessary" },
+        ],
+      })
+    ) as string;
+
+    review = guard(
+      await p.select({
+        message: "Code review preference?",
+        initialValue: defaults.review,
+        options: [
+          { value: "review-before-commit", label: "Review before commit", hint: "Claude reviews changes" },
+          { value: "review-on-request", label: "On request", hint: "review when asked" },
+          { value: "self-review", label: "Self review", hint: "I review my own code" },
+        ],
+      })
+    ) as string;
+
+    git = guard(
+      await p.select({
+        message: "Git workflow?",
+        initialValue: defaults.git,
+        options: [
+          { value: "small-commits", label: "Small commits", hint: "atomic, frequent commits" },
+          { value: "feature-branches", label: "Feature branches", hint: "branch per feature, squash merge" },
+          { value: "trunk-based", label: "Trunk-based", hint: "commit to main, feature flags" },
+          { value: "flexible", label: "Flexible", hint: "depends on the project" },
+        ],
+      })
+    ) as string;
+
+    docs = guard(
+      await p.select({
+        message: "Documentation approach?",
+        initialValue: defaults.docs,
+        options: [
+          { value: "inline", label: "Inline comments", hint: "document as you code" },
+          { value: "readme-driven", label: "README driven", hint: "docs first, then code" },
+          { value: "minimal", label: "Minimal", hint: "self-documenting code" },
+          { value: "on-request", label: "On request", hint: "document when asked" },
+        ],
+      })
+    ) as string;
+
+    debug = guard(
+      await p.select({
+        message: "Debugging style?",
+        initialValue: defaults.debug,
+        options: [
+          { value: "systematic", label: "Systematic", hint: "isolate, reproduce, trace" },
+          { value: "hypothesis", label: "Hypothesis-driven", hint: "guess likely causes first" },
+          { value: "printf", label: "Printf debugging", hint: "add logs, observe behavior" },
+          { value: "whatever-works", label: "Whatever works", hint: "just fix it" },
+        ],
+      })
+    ) as string;
+
+    refactor = guard(
+      await p.select({
+        message: "Refactoring preference?",
+        initialValue: defaults.refactor,
+        options: [
+          { value: "proactive", label: "Proactive", hint: "Claude suggests improvements" },
+          { value: "on-request", label: "On request", hint: "only when asked" },
+          { value: "boy-scout", label: "Boy scout rule", hint: "leave code better than found" },
+          { value: "if-broken", label: "If it ain't broke...", hint: "don't fix what works" },
+        ],
+      })
+    ) as string;
   }
 
-  const languages = await p.multiselect({
-    message: "Primary programming languages?",
-    options: [
-      { value: "TypeScript", label: "TypeScript" },
-      { value: "JavaScript", label: "JavaScript" },
-      { value: "Python", label: "Python" },
-      { value: "Ruby", label: "Ruby" },
-      { value: "Rust", label: "Rust" },
-      { value: "Go", label: "Go" },
-      { value: "Java", label: "Java" },
-      { value: "C#", label: "C#" },
-      { value: "PHP", label: "PHP" },
-      { value: "Elixir", label: "Elixir" },
-    ],
-    required: true,
-  });
-  if (p.isCancel(languages)) return handleCancel();
+  // ═════════════════════════════════════════════════════════════════
+  // Phase 3: Tech Stack (skip if --quick)
+  // ═════════════════════════════════════════════════════════════════
+  let packageManager = "bun";
+  let bunFeatures: string[] = [];
+  let languages: string[] = ["TypeScript"];
+  let backend = "none";
+  let frontend: string[] = [];
+  let css: string[] = [];
+  let database: string[] = [];
+  let orm: string[] = [];
+  let auth: string[] = [];
+  let infrastructure: string[] = [];
+  let monorepo: string[] = [];
+  let testingTools: string[] = [];
+  let linting: string[] = [];
+  let validation: string[] = [];
+  let editor = "VS Code";
 
-  const backend = await p.select({
-    message: "Backend framework?",
-    options: [
-      { value: "none", label: "None / Custom" },
-      { value: "Rails", label: "Ruby on Rails" },
-      { value: "Django", label: "Django" },
-      { value: "FastAPI", label: "FastAPI" },
-      { value: "Express", label: "Express.js" },
-      { value: "Hono", label: "Hono" },
-      { value: "Phoenix", label: "Phoenix (Elixir)" },
-      { value: "Spring", label: "Spring Boot" },
-      { value: "ASP.NET", label: "ASP.NET Core" },
-      { value: "Laravel", label: "Laravel" },
-    ],
-  });
-  if (p.isCancel(backend)) return handleCancel();
+  if (!options.quick) {
+    phase(3, "Tech Stack");
 
-  const frontend = await p.multiselect({
-    message: "Frontend frameworks?",
-    options: [
-      { value: "React", label: "React" },
-      { value: "Vue", label: "Vue.js" },
-      { value: "Svelte", label: "Svelte" },
-      { value: "Angular", label: "Angular" },
-      { value: "Solid", label: "SolidJS" },
-      { value: "HTMX", label: "HTMX" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(frontend)) return handleCancel();
+    // Auto-detect from project directory
+    let detected: ProjectInfo | null = null;
+    try {
+      detected = await detectProject(process.cwd());
+    } catch {
+      // Not in a project directory, that's fine
+    }
 
-  const css = await p.multiselect({
-    message: "CSS / UI frameworks?",
-    options: [
-      { value: "Tailwind", label: "Tailwind CSS" },
-      { value: "Vuetify", label: "Vuetify" },
-      { value: "Bootstrap", label: "Bootstrap" },
-      { value: "Material UI", label: "Material UI" },
-      { value: "shadcn/ui", label: "shadcn/ui" },
-      { value: "CSS Modules", label: "CSS Modules" },
-      { value: "styled-components", label: "styled-components" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(css)) return handleCancel();
+    if (detected && (detected.frameworks.length > 0 || detected.tooling.length > 0)) {
+      const detectedInfo = [
+        detected.runtime !== "unknown" ? `Runtime: ${detected.runtime}` : null,
+        detected.frameworks.length > 0 ? `Frameworks: ${detected.frameworks.join(", ")}` : null,
+        detected.tooling.length > 0 ? `Tooling: ${detected.tooling.join(", ")}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n  ");
 
-  const database = await p.multiselect({
-    message: "Databases?",
-    options: [
-      { value: "PostgreSQL", label: "PostgreSQL" },
-      { value: "MySQL", label: "MySQL" },
-      { value: "MongoDB", label: "MongoDB" },
-      { value: "SQLite", label: "SQLite" },
-      { value: "Redis", label: "Redis" },
-      { value: "Supabase", label: "Supabase" },
-      { value: "Firebase", label: "Firebase" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(database)) return handleCancel();
+      console.log(
+        `  ${chalk.cyan("\u25C6")} Detected from ${chalk.bold(detected.name)}:\n  ${chalk.dim(detectedInfo)}`
+      );
+      console.log();
 
-  const orm = await p.multiselect({
-    message: "ORM / database tools?",
-    options: [
-      { value: "Prisma", label: "Prisma" },
-      { value: "Drizzle", label: "Drizzle" },
-      { value: "TypeORM", label: "TypeORM" },
-      { value: "Kysely", label: "Kysely" },
-      { value: "Sequelize", label: "Sequelize" },
-      { value: "Mongoose", label: "Mongoose" },
-      { value: "ActiveRecord", label: "ActiveRecord (Rails)" },
-      { value: "SQLAlchemy", label: "SQLAlchemy" },
-      { value: "Django ORM", label: "Django ORM" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(orm)) return handleCancel();
+      const useDetected = guard(
+        await p.confirm({
+          message: "Use detected stack as starting point?",
+          initialValue: true,
+        })
+      ) as boolean;
 
-  const auth = await p.multiselect({
-    message: "Authentication?",
-    options: [
-      { value: "better-auth", label: "better-auth" },
-      { value: "Auth.js", label: "Auth.js (NextAuth)" },
-      { value: "Lucia", label: "Lucia" },
-      { value: "Clerk", label: "Clerk" },
-      { value: "Supabase Auth", label: "Supabase Auth" },
-      { value: "Firebase Auth", label: "Firebase Auth" },
-      { value: "Passport.js", label: "Passport.js" },
-      { value: "Devise", label: "Devise (Rails)" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(auth)) return handleCancel();
+      if (useDetected) {
+        // Pre-fill from detection
+        if (detected.runtime === "bun") packageManager = "bun";
+        else if (detected.runtime === "node") packageManager = "npm";
 
-  const infrastructure = await p.multiselect({
-    message: "Infrastructure / deployment?",
-    options: [
-      { value: "Docker Compose", label: "Docker + Compose" },
-      { value: "Docker", label: "Docker only" },
-      { value: "Kubernetes", label: "Kubernetes" },
-      { value: "Fly.io", label: "Fly.io" },
-      { value: "Vercel", label: "Vercel" },
-      { value: "Railway", label: "Railway" },
-      { value: "Render", label: "Render" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(infrastructure)) return handleCancel();
+        // Map detected frameworks to our categories
+        const frameworkSet = new Set(detected.frameworks);
+        const toolingSet = new Set(detected.tooling);
 
-  const monorepo = await p.multiselect({
-    message: "Monorepo tooling?",
-    options: [
-      { value: "Turborepo", label: "Turborepo" },
-      { value: "Bun workspaces", label: "Bun workspaces" },
-      { value: "Nx", label: "Nx" },
-      { value: "pnpm workspaces", label: "pnpm workspaces" },
-      { value: "Lerna", label: "Lerna" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(monorepo)) return handleCancel();
+        if (frameworkSet.has("React")) frontend = [...frontend, "React"];
+        if (frameworkSet.has("Vue")) frontend = [...frontend, "Vue"];
+        if (frameworkSet.has("Svelte")) frontend = [...frontend, "Svelte"];
+        if (frameworkSet.has("Angular")) frontend = [...frontend, "Angular"];
+        if (frameworkSet.has("Solid")) frontend = [...frontend, "Solid"];
 
-  const testing = await p.multiselect({
-    message: "Testing frameworks?",
-    options: [
-      { value: "bun test", label: "bun test" },
-      { value: "Vitest", label: "Vitest" },
-      { value: "Jest", label: "Jest" },
-      { value: "RSpec", label: "RSpec" },
-      { value: "pytest", label: "pytest" },
-      { value: "Playwright", label: "Playwright (E2E)" },
-      { value: "Cypress", label: "Cypress (E2E)" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(testing)) return handleCancel();
+        if (frameworkSet.has("Express")) backend = "Express";
+        if (frameworkSet.has("Hono")) backend = "Hono";
+        if (frameworkSet.has("Fastify")) backend = "Fastify";
 
-  const linting = await p.multiselect({
-    message: "Linting & formatting?",
-    options: [
-      { value: "Biome", label: "Biome" },
-      { value: "ESLint", label: "ESLint" },
-      { value: "Prettier", label: "Prettier" },
-      { value: "oxlint", label: "oxlint" },
-      { value: "Rubocop", label: "Rubocop" },
-      { value: "Ruff", label: "Ruff (Python)" },
-      { value: "rustfmt", label: "rustfmt" },
-      { value: "gofmt", label: "gofmt" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(linting)) return handleCancel();
+        if (toolingSet.has("Tailwind")) css = [...css, "Tailwind"];
+        if (toolingSet.has("Prisma")) orm = [...orm, "Prisma"];
+        if (toolingSet.has("Drizzle")) orm = [...orm, "Drizzle"];
+        if (toolingSet.has("TypeScript")) languages = [...new Set([...languages, "TypeScript"])];
+        if (toolingSet.has("Biome")) linting = [...linting, "Biome"];
+        if (toolingSet.has("ESLint")) linting = [...linting, "ESLint"];
+        if (toolingSet.has("Prettier")) linting = [...linting, "Prettier"];
+        if (toolingSet.has("Vitest")) testingTools = [...testingTools, "Vitest"];
+        if (toolingSet.has("Jest")) testingTools = [...testingTools, "Jest"];
+        if (toolingSet.has("Playwright")) testingTools = [...testingTools, "Playwright"];
+        if (toolingSet.has("Docker")) infrastructure = [...infrastructure, "Docker Compose"];
+        if (toolingSet.has("Turborepo")) monorepo = [...monorepo, "Turborepo"];
+      }
+    }
 
-  const validation = await p.multiselect({
-    message: "Validation & schema libraries?",
-    options: [
-      { value: "Zod", label: "Zod" },
-      { value: "Yup", label: "Yup" },
-      { value: "Valibot", label: "Valibot" },
-      { value: "ArkType", label: "ArkType" },
-      { value: "io-ts", label: "io-ts" },
-      { value: "TypeBox", label: "TypeBox" },
-      { value: "Pydantic", label: "Pydantic" },
-      { value: "Joi", label: "Joi" },
-    ],
-    required: false,
-  });
-  if (p.isCancel(validation)) return handleCancel();
+    const wantsCustomize =
+      detected && (detected.frameworks.length > 0 || detected.tooling.length > 0)
+        ? guard(
+            await p.confirm({
+              message: "Customize further?",
+              initialValue: true,
+            })
+          ) as boolean
+        : true;
 
-  const editor = await p.select({
-    message: "Primary editor?",
-    options: [
-      { value: "Zed", label: "Zed" },
-      { value: "VS Code", label: "VS Code" },
-      { value: "Cursor", label: "Cursor" },
-      { value: "Neovim", label: "Neovim" },
-      { value: "WebStorm", label: "WebStorm" },
-    ],
-  });
-  if (p.isCancel(editor)) return handleCancel();
+    if (wantsCustomize) {
+      packageManager = await selectWithOther("Preferred package manager?", [
+        { value: "bun", label: "Bun" },
+        { value: "pnpm", label: "pnpm" },
+        { value: "npm", label: "npm" },
+        { value: "yarn", label: "yarn" },
+      ], packageManager);
 
-  const avoidAnswer = await p.select({
-    message: "What should Claude avoid?",
-    options: [
-      { value: "all", label: "All", hint: "over-engineering, verbose explanations, extra features" },
-      { value: "some", label: "Just over-engineering" },
-      { value: "none", label: "No specific restrictions" },
-    ],
-  });
-  if (p.isCancel(avoidAnswer)) return handleCancel();
+      if (packageManager === "bun") {
+        bunFeatures = await multiselectWithOther("Bun features you use?", [
+          { value: "catalog", label: "Dependency catalog" },
+          { value: "workspaces", label: "Bun workspaces" },
+          { value: "macros", label: "Bun macros" },
+          { value: "shell", label: "Bun shell ($``)" },
+          { value: "sqlite", label: "bun:sqlite" },
+          { value: "test", label: "bun test" },
+        ]);
+      }
+
+      languages = await multiselectWithOther(
+        "Primary programming languages?",
+        [
+          { value: "TypeScript", label: "TypeScript" },
+          { value: "JavaScript", label: "JavaScript" },
+          { value: "Python", label: "Python" },
+          { value: "Ruby", label: "Ruby" },
+          { value: "Rust", label: "Rust" },
+          { value: "Go", label: "Go" },
+          { value: "Java", label: "Java" },
+          { value: "C#", label: "C#" },
+          { value: "PHP", label: "PHP" },
+          { value: "Elixir", label: "Elixir" },
+        ],
+        true
+      );
+
+      backend = await selectWithOther("Backend framework?", [
+        { value: "none", label: "None / Custom" },
+        { value: "Rails", label: "Ruby on Rails" },
+        { value: "Django", label: "Django" },
+        { value: "FastAPI", label: "FastAPI" },
+        { value: "Express", label: "Express.js" },
+        { value: "Hono", label: "Hono" },
+        { value: "Phoenix", label: "Phoenix (Elixir)" },
+        { value: "Spring", label: "Spring Boot" },
+        { value: "ASP.NET", label: "ASP.NET Core" },
+        { value: "Laravel", label: "Laravel" },
+      ], backend);
+
+      frontend = await multiselectWithOther("Frontend frameworks?", [
+        { value: "React", label: "React" },
+        { value: "Vue", label: "Vue.js" },
+        { value: "Svelte", label: "Svelte" },
+        { value: "Angular", label: "Angular" },
+        { value: "Solid", label: "SolidJS" },
+        { value: "HTMX", label: "HTMX" },
+      ]);
+
+      css = await multiselectWithOther("CSS / UI frameworks?", [
+        { value: "Tailwind", label: "Tailwind CSS" },
+        { value: "Vuetify", label: "Vuetify" },
+        { value: "Bootstrap", label: "Bootstrap" },
+        { value: "Material UI", label: "Material UI" },
+        { value: "shadcn/ui", label: "shadcn/ui" },
+        { value: "CSS Modules", label: "CSS Modules" },
+        { value: "styled-components", label: "styled-components" },
+      ]);
+
+      database = await multiselectWithOther("Databases?", [
+        { value: "PostgreSQL", label: "PostgreSQL" },
+        { value: "MySQL", label: "MySQL" },
+        { value: "MongoDB", label: "MongoDB" },
+        { value: "SQLite", label: "SQLite" },
+        { value: "Redis", label: "Redis" },
+        { value: "Supabase", label: "Supabase" },
+        { value: "Firebase", label: "Firebase" },
+      ]);
+
+      orm = await multiselectWithOther("ORM / database tools?", [
+        { value: "Prisma", label: "Prisma" },
+        { value: "Drizzle", label: "Drizzle" },
+        { value: "TypeORM", label: "TypeORM" },
+        { value: "Kysely", label: "Kysely" },
+        { value: "Sequelize", label: "Sequelize" },
+        { value: "Mongoose", label: "Mongoose" },
+        { value: "ActiveRecord", label: "ActiveRecord (Rails)" },
+        { value: "SQLAlchemy", label: "SQLAlchemy" },
+        { value: "Django ORM", label: "Django ORM" },
+      ]);
+
+      auth = await multiselectWithOther("Authentication?", [
+        { value: "better-auth", label: "better-auth" },
+        { value: "Auth.js", label: "Auth.js (NextAuth)" },
+        { value: "Lucia", label: "Lucia" },
+        { value: "Clerk", label: "Clerk" },
+        { value: "Supabase Auth", label: "Supabase Auth" },
+        { value: "Firebase Auth", label: "Firebase Auth" },
+        { value: "Passport.js", label: "Passport.js" },
+        { value: "Devise", label: "Devise (Rails)" },
+      ]);
+
+      infrastructure = await multiselectWithOther("Infrastructure / deployment?", [
+        { value: "Docker Compose", label: "Docker + Compose" },
+        { value: "Docker", label: "Docker only" },
+        { value: "Kubernetes", label: "Kubernetes" },
+        { value: "Fly.io", label: "Fly.io" },
+        { value: "Vercel", label: "Vercel" },
+        { value: "Railway", label: "Railway" },
+        { value: "Render", label: "Render" },
+      ]);
+
+      monorepo = await multiselectWithOther("Monorepo tooling?", [
+        { value: "Turborepo", label: "Turborepo" },
+        { value: "Bun workspaces", label: "Bun workspaces" },
+        { value: "Nx", label: "Nx" },
+        { value: "pnpm workspaces", label: "pnpm workspaces" },
+        { value: "Lerna", label: "Lerna" },
+      ]);
+
+      testingTools = await multiselectWithOther("Testing frameworks?", [
+        { value: "bun test", label: "bun test" },
+        { value: "Vitest", label: "Vitest" },
+        { value: "Jest", label: "Jest" },
+        { value: "RSpec", label: "RSpec" },
+        { value: "pytest", label: "pytest" },
+        { value: "Playwright", label: "Playwright (E2E)" },
+        { value: "Cypress", label: "Cypress (E2E)" },
+      ]);
+
+      linting = await multiselectWithOther("Linting & formatting?", [
+        { value: "Biome", label: "Biome" },
+        { value: "ESLint", label: "ESLint" },
+        { value: "Prettier", label: "Prettier" },
+        { value: "oxlint", label: "oxlint" },
+        { value: "Rubocop", label: "Rubocop" },
+        { value: "Ruff", label: "Ruff (Python)" },
+        { value: "rustfmt", label: "rustfmt" },
+        { value: "gofmt", label: "gofmt" },
+      ]);
+
+      validation = await multiselectWithOther("Validation & schema libraries?", [
+        { value: "Zod", label: "Zod" },
+        { value: "Yup", label: "Yup" },
+        { value: "Valibot", label: "Valibot" },
+        { value: "ArkType", label: "ArkType" },
+        { value: "io-ts", label: "io-ts" },
+        { value: "TypeBox", label: "TypeBox" },
+        { value: "Pydantic", label: "Pydantic" },
+        { value: "Joi", label: "Joi" },
+      ]);
+
+      editor = await selectWithOther("Primary editor?", [
+        { value: "Zed", label: "Zed" },
+        { value: "VS Code", label: "VS Code" },
+        { value: "Cursor", label: "Cursor" },
+        { value: "Neovim", label: "Neovim" },
+        { value: "WebStorm", label: "WebStorm" },
+      ]);
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════════
+  // Phase 4: Anti-patterns (skip if --quick)
+  // ═════════════════════════════════════════════════════════════════
+  let antiPatternLevel = "moderate";
+  let customAntiPatterns = "";
+
+  if (!options.quick) {
+    phase(4, "Anti-patterns");
+
+    antiPatternLevel = guard(
+      await p.select({
+        message: "How strict should Claude be about anti-patterns?",
+        options: [
+          { value: "strict", label: "Strict", hint: "enforce all anti-patterns strongly" },
+          { value: "moderate", label: "Moderate", hint: "reasonable defaults" },
+          { value: "relaxed", label: "Relaxed", hint: "minimal restrictions" },
+          { value: "skip", label: "Skip", hint: "no anti-pattern rules" },
+        ],
+      })
+    ) as string;
+
+    if (antiPatternLevel !== "skip") {
+      const wantsCustom = guard(
+        await p.confirm({
+          message: "Add custom anti-patterns?",
+          initialValue: false,
+        })
+      ) as boolean;
+
+      if (wantsCustom) {
+        customAntiPatterns = guard(
+          await p.text({
+            message: "Custom anti-patterns (one per line, prefix with -):",
+            placeholder: "- Don't use class components\n- Don't use var",
+          })
+        ) as string;
+      }
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════════
+  // Phase 5: Summary + Sync
+  // ═════════════════════════════════════════════════════════════════
+  phase(5, "Summary");
 
   const s = p.spinner();
   s.start("Generating profile");
 
-  // Generate profile
-  const styleDescriptions: Record<string, string[]> = {
-    direct: [
-      "Be direct and minimal - no fluff, just answers and code",
-      "Skip lengthy reasoning unless asked",
-      "Don't explain obvious things",
-    ],
-    conversational: [
-      "Be friendly but efficient",
-      "Brief explanations when helpful",
-      "Keep a conversational tone",
-    ],
-    detailed: [
-      "Provide thorough explanations",
-      "Include context and reasoning",
-      "Explain trade-offs and alternatives",
-    ],
-  };
-
-  const roleDescriptions: Record<string, string> = {
-    "senior-dev": "Senior developer - experienced and autonomous, prefers concise guidance",
-    "mid-dev": "Mid-level developer - competent but appreciates context on complex topics",
-    "junior-dev": "Junior developer - learning, benefits from more explanation and examples",
-    "founder": "Founder/Tech Lead - focused on shipping, pragmatic decisions over perfect code",
-    "student": "Student - learning fundamentals, explain concepts when relevant",
-    "hobbyist": "Hobbyist - exploring for fun, balance learning with getting things done",
-  };
-
-  const personalityDescriptions: Record<string, string[]> = {
-    "pair-programmer": [
-      "Act as a pair programmer - think out loud, collaborate on solutions",
-      "Discuss trade-offs and alternatives when relevant",
-      "Catch potential issues early, suggest improvements as we go",
-    ],
-    "senior-dev": [
-      "Act as a senior developer - give direction, review approaches",
-      "Point out potential issues and better patterns",
-      "Be opinionated when it matters, flexible when it doesn't",
-    ],
-    "assistant": [
-      "Act as an efficient assistant - execute tasks with minimal chatter",
-      "Ask clarifying questions only when truly needed",
-      "Focus on delivering what was asked",
-    ],
-    "mentor": [
-      "Act as a mentor - teach concepts, explain the 'why'",
-      "Use opportunities to share knowledge",
-      "Suggest learning resources when helpful",
-    ],
-    "rubber-duck": [
-      "Act as a rubber duck - help me think through problems",
-      "Ask probing questions rather than giving immediate answers",
-      "Help me discover solutions myself",
-    ],
-  };
-
-  const planningDescriptions: Record<string, string> = {
-    "plan-first": "Discuss architecture and approach before writing code",
-    "iterate": "Start with a rough plan, refine as we go",
-    "dive-in": "Start coding quickly, figure out structure as needed",
-  };
-
-  const testingDescriptions: Record<string, string> = {
-    "tdd": "Write tests first (TDD), then implement",
-    "test-after": "Write tests after implementation",
-    "critical-paths": "Test critical paths and edge cases",
-    "minimal": "Minimal testing - add tests when necessary",
-  };
-
-  const reviewDescriptions: Record<string, string> = {
-    "review-before-commit": "Review changes before committing - catch issues early",
-    "review-on-request": "Review code when explicitly asked",
-    "self-review": "I review my own code, no automatic reviews needed",
-  };
-
-  const gitDescriptions: Record<string, string> = {
-    "small-commits": "Small, atomic commits - easy to review and revert",
-    "feature-branches": "Feature branches with squash merges",
-    "trunk-based": "Trunk-based development with feature flags",
-    "flexible": "Flexible git workflow based on project needs",
-  };
-
-  const docDescriptions: Record<string, string> = {
-    "inline": "Document with inline comments as code is written",
-    "readme-driven": "README-driven development - docs first",
-    "minimal": "Minimal documentation - code should be self-documenting",
-    "on-request": "Add documentation when requested",
-  };
-
-  const debugDescriptions: Record<string, string> = {
-    "systematic": "Debug systematically - isolate, reproduce, trace",
-    "hypothesis": "Hypothesis-driven debugging - test likely causes first",
-    "printf": "Printf debugging - add logs and observe",
-    "whatever-works": "Whatever works to fix the issue quickly",
-  };
-
-  const refactorDescriptions: Record<string, string> = {
-    "proactive": "Proactively suggest refactoring opportunities",
-    "on-request": "Refactor only when asked",
-    "boy-scout": "Boy scout rule - leave code better than you found it",
-    "if-broken": "Don't refactor working code unless necessary",
-  };
-
+  // ── Write profile.md ────────────────────────────────────────────
   const profileContent = `---
 name: ${name}
 role: ${role}
@@ -497,220 +722,212 @@ personality: ${claudePersonality}
 
 # Who I Am
 
-${roleDescriptions[role as string]}
+${roleDescriptions[role] ?? role}
 
 # How Claude Should Behave
 
-${personalityDescriptions[claudePersonality as string].map((s) => `- ${s}`).join("\n")}
+${(personalityDescriptions[claudePersonality] ?? []).map((line) => `- ${line}`).join("\n")}
 
 # Communication Style
 
-${styleDescriptions[style as string].map((s) => `- ${s}`).join("\n")}
+${(styleDescriptions[style] ?? []).map((line) => `- ${line}`).join("\n")}
 - No emojis unless explicitly requested
 - Show code when it's clearer than explanation
 
 # Development Workflow
 
 ## Planning
-- ${planningDescriptions[planningApproach as string]}
+- ${planningDescriptions[planning] ?? planning}
 
 ## Testing
-- ${testingDescriptions[testingApproach as string]}
+- ${testingDescriptions[testing] ?? testing}
 
 ## Code Review
-- ${reviewDescriptions[codeReview as string]}
+- ${reviewDescriptions[review] ?? review}
 
 ## Git Workflow
-- ${gitDescriptions[gitWorkflow as string]}
+- ${gitDescriptions[git] ?? git}
 
 ## Documentation
-- ${docDescriptions[documentationApproach as string]}
+- ${docDescriptions[docs] ?? docs}
 
 ## Debugging
-- ${debugDescriptions[debuggingStyle as string]}
+- ${debugDescriptions[debug] ?? debug}
 
 ## Refactoring
-- ${refactorDescriptions[refactoringPreference as string]}
+- ${refactorDescriptions[refactor] ?? refactor}
 `;
 
   await writeFile(thinkPath(CONFIG.files.profile), profileContent);
 
-  // Generate tools preferences
-  const toolsSections: string[] = ["# Tool Preferences"];
+  // ── Write tools.md ──────────────────────────────────────────────
+  if (!options.quick) {
+    const toolsSections: string[] = ["# Tool Preferences"];
 
-  // Runtime & Package Manager
-  const pmAlternatives = ["npm", "pnpm", "yarn", "Node.js"].filter(
-    (pm) => pm.toLowerCase() !== (packageManager as string).toLowerCase()
-  );
-  const pmSection = [`- Use ${packageManager === "bun" ? "Bun" : packageManager}${pmAlternatives.length ? ` (not ${pmAlternatives.join(", ")})` : ""}`];
+    // Runtime & Package Manager
+    const pmAlternatives = ["npm", "pnpm", "yarn", "Node.js"].filter(
+      (pm) => pm.toLowerCase() !== packageManager.toLowerCase()
+    );
+    const pmSection = [
+      `- Use ${packageManager === "bun" ? "Bun" : packageManager}${pmAlternatives.length ? ` (not ${pmAlternatives.join(", ")})` : ""}`,
+    ];
 
-  if (bunFeatures.length > 0) {
-    if (bunFeatures.includes("catalog")) pmSection.push("- Use Bun dependency catalog for shared deps");
-    if (bunFeatures.includes("workspaces")) pmSection.push("- Use Bun workspaces for monorepos");
-    if (bunFeatures.includes("macros")) pmSection.push("- Use Bun macros for compile-time code");
-    if (bunFeatures.includes("shell")) pmSection.push("- Use Bun shell ($``) for shell commands");
-    if (bunFeatures.includes("sqlite")) pmSection.push("- Use bun:sqlite for embedded database");
-    if (bunFeatures.includes("test")) pmSection.push("- Use `bun test` for testing");
-  } else {
-    pmSection.push(`- Use \`${packageManager} test\` for testing`);
+    if (bunFeatures.length > 0) {
+      if (bunFeatures.includes("catalog")) pmSection.push("- Use Bun dependency catalog for shared deps");
+      if (bunFeatures.includes("workspaces")) pmSection.push("- Use Bun workspaces for monorepos");
+      if (bunFeatures.includes("macros")) pmSection.push("- Use Bun macros for compile-time code");
+      if (bunFeatures.includes("shell")) pmSection.push("- Use Bun shell ($``) for shell commands");
+      if (bunFeatures.includes("sqlite")) pmSection.push("- Use bun:sqlite for embedded database");
+      if (bunFeatures.includes("test")) pmSection.push("- Use `bun test` for testing");
+    } else {
+      pmSection.push(`- Use \`${packageManager} test\` for testing`);
+    }
+
+    toolsSections.push(`\n## Runtime & Package Manager\n${pmSection.join("\n")}`);
+
+    toolsSections.push(`\n## Languages\n${languages.map((l) => `- ${l}`).join("\n")}`);
+
+    if (backend !== "none") {
+      toolsSections.push(`\n## Backend\n- ${backend}`);
+    }
+
+    if (frontend.length > 0) {
+      toolsSections.push(
+        `\n## Frontend\n${frontend.map((f) => `- ${f}`).join("\n")}\n- Prefer functional components with hooks`
+      );
+    }
+
+    if (css.length > 0) {
+      toolsSections.push(`\n## CSS / UI\n${css.map((c) => `- ${c}`).join("\n")}`);
+    }
+
+    if (database.length > 0) {
+      toolsSections.push(`\n## Database\n${database.map((d) => `- ${d}`).join("\n")}`);
+    }
+
+    if (orm.length > 0) {
+      toolsSections.push(`\n## ORM / Database Tools\n${orm.map((o) => `- ${o}`).join("\n")}`);
+    }
+
+    if (auth.length > 0) {
+      toolsSections.push(`\n## Authentication\n${auth.map((a) => `- ${a}`).join("\n")}`);
+    }
+
+    if (infrastructure.length > 0) {
+      toolsSections.push(`\n## Infrastructure\n${infrastructure.map((i) => `- ${i}`).join("\n")}`);
+    }
+
+    if (monorepo.length > 0) {
+      toolsSections.push(`\n## Monorepo\n${monorepo.map((m) => `- ${m}`).join("\n")}`);
+    }
+
+    if (testingTools.length > 0) {
+      toolsSections.push(`\n## Testing\n${testingTools.map((t) => `- ${t}`).join("\n")}`);
+    }
+
+    if (linting.length > 0) {
+      toolsSections.push(
+        `\n## Linting & Formatting\n${linting.map((l) => `- ${l}`).join("\n")}\n- Use project's existing config when present`
+      );
+    }
+
+    if (validation.length > 0) {
+      toolsSections.push(`\n## Validation & Schema\n${validation.map((v) => `- ${v}`).join("\n")}`);
+    }
+
+    toolsSections.push(`\n## Editor\n- Primary: ${editor}`);
+
+    await writeFile(thinkPath(CONFIG.files.tools), toolsSections.join("\n"));
   }
 
-  toolsSections.push(`
-## Runtime & Package Manager
-${pmSection.join("\n")}`);
+  // ── Write anti-patterns.md ──────────────────────────────────────
+  if (!options.quick && antiPatternLevel !== "skip") {
+    const antiSections: string[] = [];
 
-  // Languages
-  toolsSections.push(`
-## Languages
-${(languages as string[]).map((l) => `- ${l}`).join("\n")}`);
+    antiSections.push("# Anti-Patterns to Avoid");
 
-  // Backend
-  if (backend !== "none") {
-    toolsSections.push(`
-## Backend
-- ${backend}`);
-  }
-
-  // Frontend
-  if ((frontend as string[]).length > 0) {
-    toolsSections.push(`
-## Frontend
-${(frontend as string[]).map((f) => `- ${f}`).join("\n")}
-- Prefer functional components with hooks`);
-  }
-
-  // CSS
-  if ((css as string[]).length > 0) {
-    toolsSections.push(`
-## CSS / UI
-${(css as string[]).map((c) => `- ${c}`).join("\n")}`);
-  }
-
-  // Database
-  if ((database as string[]).length > 0) {
-    toolsSections.push(`
-## Database
-${(database as string[]).map((d) => `- ${d}`).join("\n")}`);
-  }
-
-  // ORM
-  if ((orm as string[]).length > 0) {
-    toolsSections.push(`
-## ORM / Database Tools
-${(orm as string[]).map((o) => `- ${o}`).join("\n")}`);
-  }
-
-  // Auth
-  if ((auth as string[]).length > 0) {
-    toolsSections.push(`
-## Authentication
-${(auth as string[]).map((a) => `- ${a}`).join("\n")}`);
-  }
-
-  // Infrastructure
-  if ((infrastructure as string[]).length > 0) {
-    toolsSections.push(`
-## Infrastructure
-${(infrastructure as string[]).map((i) => `- ${i}`).join("\n")}`);
-  }
-
-  // Monorepo
-  if ((monorepo as string[]).length > 0) {
-    toolsSections.push(`
-## Monorepo
-${(monorepo as string[]).map((m) => `- ${m}`).join("\n")}`);
-  }
-
-  // Testing
-  if ((testing as string[]).length > 0) {
-    toolsSections.push(`
-## Testing
-${(testing as string[]).map((t) => `- ${t}`).join("\n")}`);
-  }
-
-  // Linting & Formatting
-  if ((linting as string[]).length > 0) {
-    toolsSections.push(`
-## Linting & Formatting
-${(linting as string[]).map((l) => `- ${l}`).join("\n")}
-- Use project's existing config when present`);
-  }
-
-  // Validation
-  if ((validation as string[]).length > 0) {
-    toolsSections.push(`
-## Validation & Schema
-${(validation as string[]).map((v) => `- ${v}`).join("\n")}`);
-  }
-
-  // Editor
-  toolsSections.push(`
-## Editor
-- Primary: ${editor}`);
-
-  const toolsContent = toolsSections.join("\n");
-  await writeFile(thinkPath(CONFIG.files.tools), toolsContent);
-
-  // Generate anti-patterns if selected
-  if (avoidAnswer === "all") {
-    const antiSections: string[] = [`# Anti-Patterns to Avoid
-
+    if (antiPatternLevel === "strict" || antiPatternLevel === "moderate") {
+      antiSections.push(`
 ## Code Style
 - Don't add comments for obvious code
 - Don't add type annotations that can be inferred
-- Don't create abstractions for one-time use
+- Don't create abstractions for one-time use`);
+    }
 
+    if (antiPatternLevel === "strict" || antiPatternLevel === "moderate") {
+      antiSections.push(`
 ## Architecture
 - Don't over-engineer solutions
 - Don't add features that weren't requested
 - Don't create unnecessary indirection
-- Don't add "future-proofing" complexity`];
+- Don't add "future-proofing" complexity`);
+    }
 
     // Tech choices to avoid
     const techAvoid: string[] = [];
     if (packageManager === "bun") {
       techAvoid.push("- Don't suggest npm/yarn/pnpm - use Bun");
     }
-    if ((frontend as string[]).includes("React") && !(frontend as string[]).includes("Next.js")) {
+    if (frontend.includes("React") && !frontend.includes("Next.js")) {
       techAvoid.push("- Don't suggest Next.js - use plain React");
     }
-    if ((infrastructure as string[]).includes("Docker") || (infrastructure as string[]).includes("Docker Compose")) {
-      if (!(infrastructure as string[]).includes("Kubernetes")) {
-        techAvoid.push("- Don't suggest Kubernetes - use Docker");
-      }
+    if (
+      (infrastructure.includes("Docker") || infrastructure.includes("Docker Compose")) &&
+      !infrastructure.includes("Kubernetes")
+    ) {
+      techAvoid.push("- Don't suggest Kubernetes - use Docker");
     }
 
     if (techAvoid.length > 0) {
-      antiSections.push(`
-## Tech Choices
-${techAvoid.join("\n")}`);
+      antiSections.push(`\n## Tech Choices\n${techAvoid.join("\n")}`);
     }
 
-    antiSections.push(`
+    if (antiPatternLevel === "strict" || antiPatternLevel === "moderate") {
+      antiSections.push(`
 ## Communication
 - Don't explain obvious things
 - Don't repeat back what was just said
-- Don't pad responses with unnecessary context
-`);
+- Don't pad responses with unnecessary context`);
+    }
+
+    if (customAntiPatterns.trim()) {
+      antiSections.push(`\n## Custom\n${customAntiPatterns.trim()}`);
+    }
+
+    antiSections.push("");
 
     await writeFile(thinkPath(CONFIG.files.antiPatterns), antiSections.join("\n"));
   }
 
   s.stop("Profile created");
 
-  // Sync
-  await syncCommand();
+  // ── Sync ────────────────────────────────────────────────────────
+  const syncSpinner = p.spinner();
+  syncSpinner.start("Syncing to ~/.claude/CLAUDE.md");
 
-  p.outro(chalk.green("Your profile is ready!"));
+  await generatePlugin();
+
+  let tokenInfo = "";
+  if (existsSync(CONFIG.claudeMdPath)) {
+    const content = await readFile(CONFIG.claudeMdPath, "utf-8");
+    const tokens = estimateTokens(content);
+    tokenInfo = ` (${formatTokens(tokens)} tokens)`;
+  }
+
+  syncSpinner.stop("Synced");
+
+  // ── Summary ─────────────────────────────────────────────────────
+  const summaryLines = [
+    `Name: ${name}`,
+    `Role: ${roleDescriptions[role] ?? role}`,
+    `Style: ${style}`,
+    `Personality: ${claudePersonality}`,
+  ];
+  p.note(summaryLines.join("\n"), "Profile summary");
+
+  p.outro(chalk.green(`Your profile is ready!${tokenInfo}`));
 
   console.log();
-  console.log("To customize further:");
-  console.log(`  ${chalk.cyan("think edit profile")}    Edit your profile`);
-  console.log(`  ${chalk.cyan("think edit patterns")}   Add coding patterns`);
-  console.log(`  ${chalk.cyan("think learn \"...\"")}    Add learnings over time`);
-}
-
-function handleCancel(): void {
-  p.cancel("Setup cancelled");
-  process.exit(0);
+  console.log(`  Run ${chalk.cyan("think context")} in a project to generate project-specific context.`);
+  console.log();
 }

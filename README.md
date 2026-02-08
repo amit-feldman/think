@@ -111,7 +111,6 @@ Run `think` to launch the fullscreen TUI:
 - **Tools** - Package manager, languages, editor
 - **Patterns** - Coding patterns to follow
 - **Anti-patterns** - Things to avoid
-- **Permissions** - Pre-approved commands (no prompts)
 - **Memory** - Learnings that persist across sessions
 - **Skills & Agents** - Custom workflows for Claude
 
