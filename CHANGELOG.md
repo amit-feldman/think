@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-02-08
+
+### Added
+- **`think context`** — Project-level context generation
+  - Regex-based signature extraction (functions, types, classes, enums)
+  - Token-aware adaptive file tree (collapses large directories, adjusts depth)
+  - Budget allocation across sections (overview, structure, key files, code map, knowledge)
+  - `.think.yaml` project config (optional — works with zero config)
+  - Output to `~/.claude/projects/<path>/CLAUDE.md` (zero project pollution)
+  - `--budget`, `--force`, `--dry-run` flags
+- **`think switch <profile>`** — Switch profile with auto-sync
+- **First-run detection** — Running `think` with no config auto-launches setup wizard
+- **Automation section in TUI** — Workflows and subagent rules management
+
+### Changed
+- **CLI reduced to 5 commands**: `setup`, `switch`, `context`, `learn`, `status`
+- **TUI redesign** — Clean heading hierarchy, compact header, horizontal tab navigation
+- **Memory simplified** — Learnings only (removed corrections and pending tabs)
+- **Generator** — Proper markdown nesting (strips redundant headings, bumps heading levels)
+- Auto-sync on profile switch, learn, and TUI exit
+
+### Removed
+- `think init` (merged into first-run detection)
+- `think sync` (auto-triggered by switch, learn, setup, TUI exit)
+- `think profile` subcommands (moved to TUI, replaced by `think switch`)
+- `think review`, `think edit`, `think allow`, `think tree`, `think project`, `think help`
+- Permissions section from TUI and config
+- Corrections and pending memory tabs
+- ASCII art banner (replaced with compact header)
+
 ## [0.4.2] - 2025-02-06
 
 ### Added

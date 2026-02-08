@@ -1,0 +1,16 @@
+# Dev/local files
+.automata/
+.claude/
+.think.yaml
+bun.lock
+tsconfig.json
+coverage/
+
+# Test files
+src/**/*.test.ts
+
+# Obsolete templates
+src/templates/corrections.md
+src/templates/pending.md
+src/templates/allowed-commands.md
+src/templates/settings.md

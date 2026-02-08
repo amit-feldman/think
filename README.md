@@ -1,25 +1,12 @@
 # think
 
-Personal context manager for Claude. Stop repeating yourself.
-
-```
-╭────────────────────────────────────────────╮
-│                                            │
-│   ████████╗██╗  ██╗██╗███╗   ██╗██╗  ██╗   │
-│   ╚══██╔══╝██║  ██║██║████╗  ██║██║ ██╔╝   │
-│      ██║   ███████║██║██╔██╗ ██║█████╔╝    │
-│      ██║   ██╔══██║██║██║╚██╗██║██╔═██╗    │
-│      ██║   ██║  ██║██║██║ ╚████║██║  ██╗   │
-│      ╚═╝   ╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝   │
-│                                            │
-│        Personal Context for Claude         │
-│                                            │
-╰────────────────────────────────────────────╯
-```
+Personal context manager for Claude Code. Stop repeating yourself.
 
 ## What is this?
 
 `think` manages your personal preferences, patterns, and memory for Claude Code. Instead of repeating "use bun not npm" or "be direct, skip the fluff" every session, configure it once and Claude remembers.
+
+It also generates project-level context — file trees, code signatures, and knowledge base docs — so Claude deeply understands your codebase without you explaining it.
 
 ## Install
 
@@ -34,11 +21,14 @@ npm install -g claude-think
 ## Quick Start
 
 ```bash
-# Initialize your config
-think init
+# First run launches setup wizard automatically
+think
 
-# Run the setup wizard
+# Or run setup directly
 think setup
+
+# Generate project context (run from your project directory)
+think context
 
 # Start using Claude - your context is automatically loaded
 claude
@@ -47,44 +37,49 @@ claude
 ## How it works
 
 1. Your preferences live in `~/.think/profiles/<name>/` (markdown files)
-2. `think sync` generates `~/.claude/CLAUDE.md` from active profile
-3. Claude Code auto-loads CLAUDE.md at session start
-
-## Profiles
-
-Switch between different configurations for work, personal projects, or clients:
-
-```bash
-think profile list              # See all profiles
-think profile create work       # Create new profile
-think profile create client --from work  # Copy from existing
-think profile use work          # Switch (auto-syncs)
-think profile delete old        # Remove a profile
-```
-
-Press `P` in the TUI to switch profiles interactively.
+2. `think` auto-syncs to `~/.claude/CLAUDE.md` which Claude reads at session start
+3. `think context` scans your project and writes to `~/.claude/projects/<path>/CLAUDE.md`
+4. Zero project pollution — everything lives in `~/.think` and `~/.claude`
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `think` | Launch interactive TUI |
-| `think init` | Initialize ~/.think |
-| `think setup` | Interactive profile wizard |
-| `think sync` | Regenerate Claude plugin |
-| `think status` | Show current status |
-| `think learn "..."` | Add a learning |
-| `think review` | Review Claude's suggestions |
-| `think profile list` | List all profiles |
-| `think profile use <name>` | Switch to a profile |
-| `think profile create <name>` | Create new profile |
-| `think profile delete <name>` | Delete a profile |
-| `think profile edit` | Edit profile.md |
-| `think edit <file>` | Edit any config file |
-| `think allow "cmd"` | Pre-approve a command |
-| `think tree` | Preview project file tree |
-| `think project` | Generate CLAUDE.md for current project |
-| `think help` | Show all commands |
+| `think setup` | Interactive profile wizard (re-runnable) |
+| `think switch <profile>` | Switch profile + auto-sync |
+| `think context` | Generate project context for current directory |
+| `think learn "..."` | Add a learning + auto-sync |
+| `think status` | Show profile, tokens, project context status |
+
+### think context
+
+Scans your project and generates a context file Claude reads automatically:
+
+```bash
+think context                    # Default 12k token budget
+think context --budget 20000     # Larger budget
+think context --dry-run          # Preview without writing
+```
+
+Output includes:
+- Project overview (runtime, frameworks, tooling)
+- Token-aware adaptive file tree
+- Code map (function/type signatures)
+- Key files (full source for important files)
+- Knowledge base (from `.think/knowledge/*.md`)
+
+Configure with `.think.yaml` in your project root (optional — works with zero config).
+
+## Profiles
+
+Switch between different configurations for work, personal projects, or clients:
+
+```bash
+think switch work     # Switch profile (auto-syncs)
+```
+
+Press `P` in the TUI to manage profiles interactively (create, delete, switch).
 
 ## TUI
 
@@ -93,12 +88,15 @@ Run `think` to launch the fullscreen TUI:
 | Key | Action |
 |-----|--------|
 | `Tab` | Switch sections |
+| `1-6` | Jump to section |
 | `↑↓` / `jk` | Navigate / scroll |
-| `e` | Edit selected item |
-| `n` | New agent/skill |
-| `r` | Rename agent/skill |
+| `←→` | Switch sub-tabs |
+| `e` | Edit in $EDITOR |
+| `n` | New item |
 | `d` | Delete item |
-| `a` | Quick actions (sync, learn, search) |
+| `c` | Duplicate |
+| `r` | Rename |
+| `s` | Sync CLAUDE.md |
 | `p` | Preview CLAUDE.md |
 | `P` | Switch profile |
 | `/` | Search all files |
@@ -107,24 +105,37 @@ Run `think` to launch the fullscreen TUI:
 
 ## What you can configure
 
-- **Profile** - Communication style, preferences
-- **Tools** - Package manager, languages, editor
-- **Patterns** - Coding patterns to follow
-- **Anti-patterns** - Things to avoid
-- **Memory** - Learnings that persist across sessions
-- **Skills & Agents** - Custom workflows for Claude
+- **Profile** — Identity, communication style, personality
+- **Preferences** — Tools, patterns, anti-patterns
+- **Memory** — Learnings that persist across sessions
+- **Skills** — Custom skill definitions for Claude
+- **Agents** — Subagent configurations with tools and triggers
+- **Automation** — Workflows and subagent rules
 
 ## Example
 
 After setup, Claude automatically knows:
 
 ```markdown
-# About Amit
-- Be direct and minimal
-- Use bun, not npm
-- TypeScript and Rust
-- Don't over-engineer
-- Don't explain obvious things
+## About the User
+
+Name: Amit
+
+Senior developer - experienced and autonomous
+
+## How Claude Should Behave
+
+- Be direct and minimal - no fluff, just answers and code
+- Skip lengthy reasoning unless asked
+
+## Tool Preferences
+
+### Runtime & Package Manager
+- Use Bun (not npm, pnpm, yarn)
+
+### Languages
+- TypeScript
+- Rust
 ```
 
 No more repeating yourself.
