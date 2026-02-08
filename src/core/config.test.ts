@@ -54,16 +54,14 @@ describe("formatTokens", () => {
 describe("getProjectClaudeMdPath", () => {
   test("converts absolute path to safe directory name", () => {
     const result = getProjectClaudeMdPath("/Users/test/my-project");
-    expect(result).toContain("Users-test-my-project");
+    expect(result).toContain("-Users-test-my-project");
     expect(result).toContain("CLAUDE.md");
     expect(result).not.toContain("//");
   });
 
-  test("strips leading slash", () => {
+  test("matches Claude Code path convention (leading dash)", () => {
     const result = getProjectClaudeMdPath("/home/user/project");
-    expect(result).toContain("home-user-project");
-    // Should not start with a dash (the leading / is stripped)
-    expect(result).not.toContain("-home-user-project");
+    expect(result).toContain("-home-user-project");
   });
 });
 

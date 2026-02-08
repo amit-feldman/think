@@ -51,7 +51,7 @@ export const CONFIG = {
  */
 export function getProjectClaudeMdPath(projectDir: string): string {
   // Convert absolute path to a safe directory name by replacing path separators
-  const safePath = projectDir.replace(/^\//, "").replace(/\//g, "-");
+  const safePath = projectDir.replace(/\//g, "-");
   return join(CONFIG.claudeProjectsDir, safePath, "CLAUDE.md");
 }
 
