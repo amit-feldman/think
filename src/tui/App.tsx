@@ -16,7 +16,6 @@ import { ProfileSwitcher } from "./components/ProfileSwitcher.tsx";
 import { FullScreen, useTerminalSize } from "./components/FullScreen.tsx";
 import { existsSync, readdirSync } from "fs";
 import { readFile } from "fs/promises";
-import { spawn } from "child_process";
 import { CONFIG, getActiveProfile, estimateTokens, formatTokens } from "../core/config.ts";
 import { switchProfile } from "../core/profiles.ts";
 import { generatePlugin } from "../core/generator.ts";
@@ -151,16 +150,6 @@ export function App() {
     setModal("none");
   }
 
-  function handleSetup() {
-    isExitingRef.current = true;
-    exit();
-    setTimeout(() => {
-      spawn("think", ["setup"], {
-        stdio: "inherit",
-      });
-    }, 100);
-  }
-
   // Don't render while exiting
   if (isExitingRef.current) {
     return null;
@@ -224,7 +213,6 @@ export function App() {
           <ProfileSwitcher
             onClose={() => setModal("none")}
             onSwitch={handleProfileSwitch}
-            onSetup={handleSetup}
           />
         </Box>
       </FullScreen>

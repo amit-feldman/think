@@ -49,7 +49,7 @@ export function StatusBar({ message, section }: StatusBarProps) {
     return (
       <Box>
         <Text dimColor>
-          {"↑↓ nav · "}{sectionHints}{" · / search · ? help · q quit"}
+          {"↑↓ nav · "}{sectionHints}{" · P profiles · / search · ? help · q quit"}
         </Text>
       </Box>
     );
@@ -58,7 +58,7 @@ export function StatusBar({ message, section }: StatusBarProps) {
   return (
     <Box>
       <Text dimColor>
-        {"↑↓ navigate · "}{sectionHints}{" · s sync · p preview · / search · ? help · q quit"}
+        {"↑↓ navigate · "}{sectionHints}{" · s sync · p preview · P profiles · / search · ? help · q quit"}
       </Text>
     </Box>
   );

@@ -79,7 +79,7 @@ Switch between different configurations for work, personal projects, or clients:
 think switch work     # Switch profile (auto-syncs)
 ```
 
-Press `P` in the TUI to manage profiles interactively (create, delete, switch).
+Press `P` in the TUI to manage profiles interactively (create, delete, switch). New profiles can be created with role-based defaults without leaving the TUI.
 
 ## TUI
 
