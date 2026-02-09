@@ -232,36 +232,15 @@ ${roleDescriptions[role] ?? role}
 
 # How Claude Should Behave
 
-${(personalityDescriptions[personality] ?? []).map((line) => `- ${line}`).join("\n")}
+${(personalityDescriptions[personality] ?? []).join(". ")}.
 
 # Communication Style
 
-${(styleDescriptions[style] ?? []).map((line) => `- ${line}`).join("\n")}
-- No emojis unless explicitly requested
-- Show code when it's clearer than explanation
+${(styleDescriptions[style] ?? []).join(". ")}. No emojis unless explicitly requested. Show code when it's clearer than explanation.
 
 # Development Workflow
 
-## Planning
-- ${planningDescriptions[defaults.planning] ?? defaults.planning}
-
-## Testing
-- ${testingDescriptions[defaults.testing] ?? defaults.testing}
-
-## Code Review
-- ${reviewDescriptions[defaults.review] ?? defaults.review}
-
-## Git Workflow
-- ${gitDescriptions[defaults.git] ?? defaults.git}
-
-## Documentation
-- ${docDescriptions[defaults.docs] ?? defaults.docs}
-
-## Debugging
-- ${debugDescriptions[defaults.debug] ?? defaults.debug}
-
-## Refactoring
-- ${refactorDescriptions[defaults.refactor] ?? defaults.refactor}
+Planning: ${planningDescriptions[defaults.planning] ?? defaults.planning}. Testing: ${testingDescriptions[defaults.testing] ?? defaults.testing}. Code review: ${reviewDescriptions[defaults.review] ?? defaults.review}. Git: ${gitDescriptions[defaults.git] ?? defaults.git}. Documentation: ${docDescriptions[defaults.docs] ?? defaults.docs}. Debugging: ${debugDescriptions[defaults.debug] ?? defaults.debug}. Refactoring: ${refactorDescriptions[defaults.refactor] ?? defaults.refactor}.
 `;
 
   await writeFile(join(profileDir, CONFIG.files.profile), profileContent);
@@ -270,20 +249,13 @@ ${(styleDescriptions[style] ?? []).map((line) => `- ${line}`).join("\n")}
   const antiContent = `# Anti-Patterns to Avoid
 
 ## Code Style
-- Don't add comments for obvious code
-- Don't add type annotations that can be inferred
-- Don't create abstractions for one-time use
+Do not add comments for obvious code. Do not add type annotations that can be inferred. Do not create abstractions for one-time use.
 
 ## Architecture
-- Don't over-engineer solutions
-- Don't add features that weren't requested
-- Don't create unnecessary indirection
-- Don't add "future-proofing" complexity
+Do not over-engineer solutions. Do not add features that were not requested. Do not create unnecessary indirection or "future-proofing" complexity.
 
 ## Communication
-- Don't explain obvious things
-- Don't repeat back what was just said
-- Don't pad responses with unnecessary context
+Do not explain obvious things. Do not repeat back what was just said. Do not pad responses with unnecessary context.
 `;
 
   await writeFile(join(profileDir, CONFIG.files.antiPatterns), antiContent);

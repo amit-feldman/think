@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-02-09
+
+### Changed
+- Converted bullet-heavy templates to prose format per Claude system prompt guidelines
+- Replaced bold markdown labels with plain text in generated output
+- Removed self-referential tool naming from generated context
+- Added proactiveness controls to subagent templates
+- Converted agent templates from numbered lists to prose
+
+## [0.5.4] - 2026-02-09
+
+### Added
+- Context-aware agents with profile injection — agents now receive the active profile context when spawned
+
 ## [0.5.3] - 2026-02-09
 
 ### Added

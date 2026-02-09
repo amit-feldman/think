@@ -566,36 +566,15 @@ ${roleDescriptions[role] ?? role}
 
 # How Claude Should Behave
 
-${(personalityDescriptions[claudePersonality] ?? []).map((line) => `- ${line}`).join("\n")}
+${(personalityDescriptions[claudePersonality] ?? []).join(". ")}.
 
 # Communication Style
 
-${(styleDescriptions[style] ?? []).map((line) => `- ${line}`).join("\n")}
-- No emojis unless explicitly requested
-- Show code when it's clearer than explanation
+${(styleDescriptions[style] ?? []).join(". ")}. No emojis unless explicitly requested. Show code when it's clearer than explanation.
 
 # Development Workflow
 
-## Planning
-- ${planningDescriptions[planning] ?? planning}
-
-## Testing
-- ${testingDescriptions[testing] ?? testing}
-
-## Code Review
-- ${reviewDescriptions[review] ?? review}
-
-## Git Workflow
-- ${gitDescriptions[git] ?? git}
-
-## Documentation
-- ${docDescriptions[docs] ?? docs}
-
-## Debugging
-- ${debugDescriptions[debug] ?? debug}
-
-## Refactoring
-- ${refactorDescriptions[refactor] ?? refactor}
+Planning: ${planningDescriptions[planning] ?? planning}. Testing: ${testingDescriptions[testing] ?? testing}. Code review: ${reviewDescriptions[review] ?? review}. Git: ${gitDescriptions[git] ?? git}. Documentation: ${docDescriptions[docs] ?? docs}. Debugging: ${debugDescriptions[debug] ?? debug}. Refactoring: ${refactorDescriptions[refactor] ?? refactor}.
 `;
 
   await writeFile(thinkPath(CONFIG.files.profile), profileContent);
@@ -689,45 +668,38 @@ ${(styleDescriptions[style] ?? []).map((line) => `- ${line}`).join("\n")}
     if (antiPatternLevel === "strict" || antiPatternLevel === "moderate") {
       antiSections.push(`
 ## Code Style
-- Don't add comments for obvious code
-- Don't add type annotations that can be inferred
-- Don't create abstractions for one-time use`);
+Do not add comments for obvious code. Do not add type annotations that can be inferred. Do not create abstractions for one-time use.`);
     }
 
     if (antiPatternLevel === "strict" || antiPatternLevel === "moderate") {
       antiSections.push(`
 ## Architecture
-- Don't over-engineer solutions
-- Don't add features that weren't requested
-- Don't create unnecessary indirection
-- Don't add "future-proofing" complexity`);
+Do not over-engineer solutions. Do not add features that were not requested. Do not create unnecessary indirection or "future-proofing" complexity.`);
     }
 
     // Tech choices to avoid
     const techAvoid: string[] = [];
     if (packageManager === "bun") {
-      techAvoid.push("- Don't suggest npm/yarn/pnpm - use Bun");
+      techAvoid.push("Do not suggest npm/yarn/pnpm — use Bun.");
     }
     if (frontend.includes("React") && !frontend.includes("Next.js")) {
-      techAvoid.push("- Don't suggest Next.js - use plain React");
+      techAvoid.push("Do not suggest Next.js — use plain React.");
     }
     if (
       (infrastructure.includes("Docker") || infrastructure.includes("Docker Compose")) &&
       !infrastructure.includes("Kubernetes")
     ) {
-      techAvoid.push("- Don't suggest Kubernetes - use Docker");
+      techAvoid.push("Do not suggest Kubernetes — use Docker.");
     }
 
     if (techAvoid.length > 0) {
-      antiSections.push(`\n## Tech Choices\n${techAvoid.join("\n")}`);
+      antiSections.push(`\n## Tech Choices\n${techAvoid.join(" ")}`);
     }
 
     if (antiPatternLevel === "strict" || antiPatternLevel === "moderate") {
       antiSections.push(`
 ## Communication
-- Don't explain obvious things
-- Don't repeat back what was just said
-- Don't pad responses with unnecessary context`);
+Do not explain obvious things. Do not repeat back what was just said. Do not pad responses with unnecessary context.`);
     }
 
     if (customAntiPatterns.trim()) {

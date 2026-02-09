@@ -3,7 +3,4 @@
 Multi-step automations for common tasks.
 
 ## Feature Development
-1. Explore existing patterns
-2. Plan implementation
-3. Implement with tests
-4. Review before commit
+First explore existing patterns in the codebase, then plan the implementation approach. Implement the feature with tests, and review the changes before committing.

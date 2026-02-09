@@ -1,10 +1,10 @@
 # Patterns to Follow
 
 ## Code Style
-- (add your preferred patterns)
+(Add your preferred patterns here, e.g. naming conventions, formatting rules.)
 
 ## Architecture
-- (add your architectural preferences)
+(Add your architectural preferences here, e.g. layering, separation of concerns.)
 
 ## Testing
-- (add your testing preferences)
+(Add your testing preferences here, e.g. TDD, coverage expectations.)

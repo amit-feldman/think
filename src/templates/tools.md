@@ -1,13 +1,13 @@
 # Tool Preferences
 
 ## Package Managers
-- Preferred: (specify your preference)
+Preferred: (specify your preference, e.g. Bun, pnpm)
 
 ## Languages
-- Primary: (your main languages)
+Primary: (your main languages, e.g. TypeScript, Rust)
 
 ## Frameworks
-- (list your preferred frameworks)
+(Your preferred frameworks, e.g. React, Hono, Axum)
 
 ## Editors
-- Primary: (your editor)
+Primary: (your editor, e.g. VS Code, Neovim)

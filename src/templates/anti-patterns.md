@@ -1,11 +1,10 @@
 # Anti-Patterns to Avoid
 
 ## Code Style
-- (things to avoid)
+(Add code style anti-patterns here, e.g. unnecessary comments on obvious code.)
 
 ## Architecture
-- (patterns to avoid)
+(Add architecture anti-patterns here, e.g. premature abstraction.)
 
 ## General
-- Don't over-engineer solutions
-- Don't add features that weren't requested
+Do not over-engineer solutions. Do not add features that were not requested.
