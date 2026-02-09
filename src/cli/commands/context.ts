@@ -2,6 +2,7 @@ import chalk from "chalk";
 import { getProjectClaudeMdPath } from "../../core/config.ts";
 import { generateProjectContext } from "../../core/context.ts";
 import type { ContextResult } from "../../core/context.ts";
+import { loadContextConfig } from "../../core/project-config.ts";
 
 export async function contextCommand(options: {
   budget?: string;
@@ -36,8 +37,14 @@ export async function contextCommand(options: {
         : "")
   );
 
-  // Token budget
-  const budgetValue = options.budget ? parseInt(options.budget, 10) : 8000;
+  // Token budget (reflect actual default from .think.yaml or built-in defaults)
+  let budgetValue: number;
+  if (options.budget) {
+    budgetValue = parseInt(options.budget, 10);
+  } else {
+    const cfg = await loadContextConfig(projectDir);
+    budgetValue = cfg.budget;
+  }
   const usedK = (result.totalTokens / 1000).toFixed(1);
   const budgetK = (budgetValue / 1000).toFixed(0);
   console.log(

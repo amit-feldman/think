@@ -134,7 +134,7 @@ tools:
 ---
 ```
 
-When `think` syncs to CLAUDE.md, agents with `model` or `inject` get a `**Spawn as**` instruction and your profile content inlined — Claude knows how to invoke them as Task subagents with the right model.
+When `think` syncs to CLAUDE.md, agents with `model` or `inject` get a 'Spawn as' instruction and your profile content inlined — Claude knows how to invoke them as Task subagents with the right model.
 
 ### What gets generated
 
@@ -162,9 +162,9 @@ Produces this in CLAUDE.md (with your actual profile content injected):
 ```markdown
 ### Code Reviewer
 
-**Model**: sonnet
-**Tools**: Read, Glob, Grep
-**Spawn as**: Task subagent (model: sonnet) when the trigger conditions are met.
+Model: sonnet
+Tools: Read, Glob, Grep
+Spawn as: Task subagent (model: sonnet) when the trigger conditions are met.
 
 #### User Preferences: Patterns to Follow
 - Write tests first (TDD)
