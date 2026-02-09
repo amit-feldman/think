@@ -44,6 +44,20 @@ program
     await contextCommand(options);
   });
 
+// Agents management
+const agents = program
+  .command("agents")
+  .description("Manage custom agents");
+
+agents
+  .command("add")
+  .description("Create a new agent from a template")
+  .option("-t, --template <name>", "Template name (frontend, backend, reviewer, tester)")
+  .action(async (options: { template?: string }) => {
+    const { agentsAddCommand } = await import("./commands/agents.ts");
+    await agentsAddCommand(options);
+  });
+
 // Quick-add learning
 program
   .command("learn <text>")

@@ -21,6 +21,8 @@ export const skillAgentFrontmatterSchema = z.object({
   description: z.string().max(500).optional(),
   trigger: z.string().max(300).optional(),
   tools: z.array(z.string()).optional(),
+  model: z.enum(["sonnet", "haiku", "opus"]).optional(),
+  inject: z.array(z.enum(["tools", "patterns", "anti-patterns"])).optional(),
 });
 
 /**

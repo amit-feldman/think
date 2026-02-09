@@ -78,6 +78,39 @@ describe("skillAgentFrontmatterSchema", () => {
       skillAgentFrontmatterSchema.parse({ name: "Test", trigger: "a".repeat(301) })
     ).toThrow();
   });
+
+  test("accepts valid model values", () => {
+    for (const model of ["sonnet", "haiku", "opus"] as const) {
+      const result = skillAgentFrontmatterSchema.parse({ name: "Test", model });
+      expect(result.model).toBe(model);
+    }
+  });
+
+  test("rejects invalid model value", () => {
+    expect(() =>
+      skillAgentFrontmatterSchema.parse({ name: "Test", model: "gpt4" })
+    ).toThrow();
+  });
+
+  test("accepts valid inject values", () => {
+    const result = skillAgentFrontmatterSchema.parse({
+      name: "Test",
+      inject: ["tools", "patterns", "anti-patterns"],
+    });
+    expect(result.inject).toEqual(["tools", "patterns", "anti-patterns"]);
+  });
+
+  test("rejects invalid inject value", () => {
+    expect(() =>
+      skillAgentFrontmatterSchema.parse({ name: "Test", inject: ["invalid"] })
+    ).toThrow();
+  });
+
+  test("model and inject are optional (backward compatible)", () => {
+    const result = skillAgentFrontmatterSchema.parse({ name: "Test" });
+    expect(result.model).toBeUndefined();
+    expect(result.inject).toBeUndefined();
+  });
 });
 
 describe("profileFrontmatterSchema", () => {

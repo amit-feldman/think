@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
-import { readdir, rename, unlink, copyFile } from "fs/promises";
+import { readdir, rename, unlink, copyFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { thinkPath, CONFIG } from "../../core/config.ts";
 import { parseMarkdown } from "../../core/parser.ts";
 import { generateUniqueFilename } from "../../core/names.ts";
+import { listAgentTemplates, loadAgentTemplate, getTemplateDescription } from "../../core/agent-templates.ts";
 import { spawn } from "child_process";
 import { join } from "path";
 
@@ -22,7 +23,13 @@ interface AgentsProps {
   isActive?: boolean;
 }
 
-type Mode = "list" | "rename" | "confirmDelete";
+interface TemplateOption {
+  name: string;
+  label: string;
+  description: string;
+}
+
+type Mode = "list" | "rename" | "confirmDelete" | "newAgent";
 
 export function Agents({ height = 15, isActive = true }: AgentsProps) {
   const [items, setItems] = useState<ItemInfo[]>([]);
@@ -30,6 +37,8 @@ export function Agents({ height = 15, isActive = true }: AgentsProps) {
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<Mode>("list");
   const [renameValue, setRenameValue] = useState("");
+  const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
+  const [templateIndex, setTemplateIndex] = useState(0);
 
   useEffect(() => {
     loadItems();
@@ -126,6 +135,48 @@ export function Agents({ height = 15, isActive = true }: AgentsProps) {
     }
   }
 
+  async function loadTemplateOptions() {
+    const templates = await listAgentTemplates();
+    const options: TemplateOption[] = [
+      { name: "blank", label: "Blank", description: "Empty agent file" },
+    ];
+    for (const t of templates) {
+      const desc = await getTemplateDescription(t);
+      options.push({
+        name: t,
+        label: t.charAt(0).toUpperCase() + t.slice(1),
+        description: desc,
+      });
+    }
+    setTemplateOptions(options);
+    setTemplateIndex(0);
+    setMode("newAgent");
+  }
+
+  async function handleTemplateSelect(option: TemplateOption) {
+    const existingNames = items.map((a) => a.filename.replace(".md", ""));
+    let newFilename: string;
+    if (option.name === "blank") {
+      newFilename = generateUniqueFilename(existingNames);
+    } else if (existingNames.includes(option.name)) {
+      newFilename = generateUniqueFilename(existingNames);
+    } else {
+      newFilename = `${option.name}.md`;
+    }
+    const newPath = thinkPath(CONFIG.dirs.agents, newFilename);
+
+    if (option.name !== "blank") {
+      const content = await loadAgentTemplate(option.name);
+      await writeFile(newPath, content);
+    }
+
+    const editor = process.env.EDITOR || "vi";
+    spawn(editor, [newPath], { stdio: "inherit" }).on("exit", () => {
+      loadItems();
+    });
+    setMode("list");
+  }
+
   useInput(
     (input, key) => {
       // Rename mode
@@ -133,6 +184,25 @@ export function Agents({ height = 15, isActive = true }: AgentsProps) {
         if (key.escape) {
           setMode("list");
           setRenameValue("");
+        }
+        return;
+      }
+
+      // New agent template picker mode
+      if (mode === "newAgent") {
+        if (key.escape) {
+          setMode("list");
+          return;
+        }
+        if (key.upArrow || input === "k") {
+          setTemplateIndex((i) => Math.max(0, i - 1));
+        }
+        if (key.downArrow || input === "j") {
+          setTemplateIndex((i) => Math.min(templateOptions.length - 1, i + 1));
+        }
+        if (key.return) {
+          const selected = templateOptions[templateIndex];
+          if (selected) handleTemplateSelect(selected);
         }
         return;
       }
@@ -163,15 +233,7 @@ export function Agents({ height = 15, isActive = true }: AgentsProps) {
         });
       }
       if (input === "n") {
-        const editor = process.env.EDITOR || "vi";
-        const existingNames = items.map((a) => a.filename.replace(".md", ""));
-        const newFilename = generateUniqueFilename(existingNames);
-        const newPath = thinkPath(CONFIG.dirs.agents, newFilename);
-        spawn(editor, [newPath], {
-          stdio: "inherit",
-        }).on("exit", () => {
-          loadItems();
-        });
+        loadTemplateOptions();
       }
       if (input === "r" && items[selectedIndex]) {
         setRenameValue(items[selectedIndex].filename.replace(".md", ""));
@@ -230,6 +292,34 @@ export function Agents({ height = 15, isActive = true }: AgentsProps) {
         <Box marginTop={1}>
           <Text color="red" bold>  y</Text>
           <Text dimColor>: delete | any key: cancel</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // New agent template picker
+  if (mode === "newAgent") {
+    return (
+      <Box flexDirection="column">
+        <Box marginBottom={1}>
+          <Text bold color="cyan">  New Agent</Text>
+          <Text dimColor> — choose a template</Text>
+        </Box>
+        {templateOptions.map((opt, i) => (
+          <Box key={opt.name}>
+            <Text color={i === templateIndex ? "cyan" : undefined}>
+              {i === templateIndex ? "  \u25b8 " : "    "}
+            </Text>
+            <Text bold={i === templateIndex} color={i === templateIndex ? "white" : undefined}>
+              {opt.label}
+            </Text>
+            {opt.description && (
+              <Text dimColor>  {opt.description.slice(0, 50)}{opt.description.length > 50 ? "..." : ""}</Text>
+            )}
+          </Box>
+        ))}
+        <Box marginTop={1}>
+          <Text dimColor>  Enter: select | Esc: cancel</Text>
         </Box>
       </Box>
     );

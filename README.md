@@ -50,6 +50,7 @@ claude
 | `think switch <profile>` | Switch profile + auto-sync |
 | `think context` | Generate project context for current directory |
 | `think learn "..."` | Add a learning + auto-sync |
+| `think agents add` | Create agent from template (interactive or `--template <name>`) |
 | `think status` | Show profile, tokens, project context status |
 
 ### think context
@@ -109,8 +110,105 @@ Run `think` to launch the fullscreen TUI:
 - **Preferences** — Tools, patterns, anti-patterns
 - **Memory** — Learnings that persist across sessions
 - **Skills** — Custom skill definitions for Claude
-- **Agents** — Subagent configurations with tools and triggers
+- **Agents** — Context-aware subagent configurations (see below)
 - **Automation** — Workflows and subagent rules
+
+## Context-Aware Agents
+
+Agents can automatically inject your profile preferences, so you write compact agent definitions instead of 500-line generic prompts.
+
+### Frontmatter fields
+
+```yaml
+---
+name: Frontend Developer
+model: sonnet          # haiku | sonnet | opus — used when spawning Task subagent
+inject:                # auto-inject profile sections into the agent
+  - tools
+  - patterns
+  - anti-patterns
+tools:
+  - Read
+  - Write
+  - Bash
+---
+```
+
+When `think` syncs to CLAUDE.md, agents with `model` or `inject` get a `**Spawn as**` instruction and your profile content inlined — Claude knows how to invoke them as Task subagents with the right model.
+
+### What gets generated
+
+A minimal agent like this:
+
+```markdown
+---
+name: Code Reviewer
+model: sonnet
+inject:
+  - patterns
+  - anti-patterns
+tools:
+  - Read
+  - Glob
+  - Grep
+---
+
+Review code for correctness and clarity.
+Flag issues by severity: blocking, suggestion, nit.
+```
+
+Produces this in CLAUDE.md (with your actual profile content injected):
+
+```markdown
+### Code Reviewer
+
+**Model**: sonnet
+**Tools**: Read, Glob, Grep
+**Spawn as**: Task subagent (model: sonnet) when the trigger conditions are met.
+
+#### User Preferences: Patterns to Follow
+- Write tests first (TDD)
+- Small, atomic commits
+
+#### User Preferences: Anti-Patterns to Avoid
+- Don't over-engineer solutions
+- Don't add features that weren't requested
+
+Review code for correctness and clarity.
+Flag issues by severity: blocking, suggestion, nit.
+```
+
+### Without inject (classic agents)
+
+Agents without `model` or `inject` render exactly as before — no breaking changes:
+
+```yaml
+---
+name: Simple Helper
+description: Answers questions
+tools:
+  - Read
+  - Grep
+---
+```
+
+### Built-in templates
+
+Create agents from templates in the TUI (press `n` in the Agents tab) or CLI:
+
+```bash
+think agents add                        # Interactive template picker
+think agents add --template frontend    # Direct creation
+think agents add --template blank       # Empty agent file
+```
+
+| Template | Model | Injects | Purpose |
+|----------|-------|---------|---------|
+| `frontend` | sonnet | tools, patterns | Build UI components |
+| `backend` | sonnet | tools, patterns | Build APIs and services |
+| `reviewer` | sonnet | patterns, anti-patterns | Review code quality |
+| `tester` | haiku | tools, patterns | Write tests (TDD) |
+| `blank` | — | — | Empty agent file |
 
 ## Example
 
