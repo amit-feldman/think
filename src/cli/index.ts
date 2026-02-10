@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { existsSync } from "fs";
 import { Command } from "commander";
 import { CONFIG } from "../core/config.ts";

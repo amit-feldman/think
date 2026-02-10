@@ -1,25 +1,32 @@
-import { readdir, readFile } from "fs/promises";
-import { join, dirname } from "path";
 import matter from "gray-matter";
 
-const TEMPLATES_DIR = join(dirname(import.meta.dir), "templates", "agents");
+// Inline templates so esbuild bundles them as strings (no filesystem reads)
+import backendMd from "../templates/agents/backend.md";
+import frontendMd from "../templates/agents/frontend.md";
+import reviewerMd from "../templates/agents/reviewer.md";
+import testerMd from "../templates/agents/tester.md";
+
+const TEMPLATES: Record<string, string> = {
+  backend: backendMd,
+  frontend: frontendMd,
+  reviewer: reviewerMd,
+  tester: testerMd,
+};
 
 /**
- * List available agent template names (without .md extension)
+ * List available agent template names
  */
 export async function listAgentTemplates(): Promise<string[]> {
-  const entries = await readdir(TEMPLATES_DIR, { withFileTypes: true });
-  return entries
-    .filter((e) => e.isFile() && e.name.endsWith(".md"))
-    .map((e) => e.name.replace(".md", ""))
-    .sort();
+  return Object.keys(TEMPLATES).sort();
 }
 
 /**
  * Load the full content of an agent template
  */
 export async function loadAgentTemplate(name: string): Promise<string> {
-  return readFile(join(TEMPLATES_DIR, `${name}.md`), "utf-8");
+  const content = TEMPLATES[name];
+  if (!content) throw new Error(`Unknown agent template: ${name}`);
+  return content;
 }
 
 /**

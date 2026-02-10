@@ -11,12 +11,10 @@ It also generates project-level context — file trees, code signatures, and kno
 ## Install
 
 ```bash
-# With bun (recommended)
-bun add -g claude-think
-
-# With npm
 npm install -g claude-think
 ```
+
+Works with any package manager (`npm`, `yarn`, `pnpm`, `bun`). Requires Node.js 18+.
 
 ## Quick Start
 

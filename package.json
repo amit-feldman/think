@@ -1,6 +1,6 @@
 {
   "name": "claude-think",
-"version": "0.5.7",
+  "version": "0.5.8",
   "description": "Personal context manager for Claude - manage your preferences, patterns, and memory",
   "author": "Amit Feldman",
   "license": "MIT",
@@ -12,19 +12,26 @@
   "bugs": {
     "url": "https://github.com/amit-feldman/think/issues"
   },
-  "keywords": ["claude", "cli", "context", "ai", "productivity", "bun"],
-  "module": "src/cli/index.ts",
+  "keywords": [
+    "claude",
+    "cli",
+    "context",
+    "ai",
+    "productivity"
+  ],
   "type": "module",
   "bin": {
-    "think": "src/cli/index.ts"
+    "think": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "prepublishOnly": "node build.js"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.13",
-    "@types/string-similarity": "^4.0.2"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/string-similarity": "^4.0.2",
+    "esbuild": "^0.27.3"
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
