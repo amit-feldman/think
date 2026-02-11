@@ -312,6 +312,17 @@ describe("scanImports", () => {
     expect(imports.length).toBe(1);
   });
 
+  test("ignores imports inside comments", () => {
+    const code = `import { foo } from "./utils";
+// import { bar } from "fake-pkg";
+/* import baz from "another-fake"; */
+// Simple resolution: from "src/routes/api.ts" importing "../services/db"
+`;
+    const imports = scanImports(code, "typescript");
+    expect(imports.length).toBe(1);
+    expect(imports[0]!.source).toBe("./utils");
+  });
+
   test("returns empty for unsupported language", () => {
     const imports = scanImports("some code", "haskell");
     expect(imports).toEqual([]);

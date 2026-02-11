@@ -47,6 +47,13 @@ function languageFromExt(ext: string): string | null {
  * Scan source code for import statements using regex.
  * Supports JS/TS (import/require), Python (import/from), Go (import), Rust (use).
  */
+/**
+ * Strip single-line (//) and multi-line comments from source code.
+ */
+function stripComments(code: string): string {
+  return code.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
 export function scanImports(content: string, language: string): ImportEntry[] {
   const imports: ImportEntry[] = [];
   const seen = new Set<string>();
@@ -57,28 +64,31 @@ export function scanImports(content: string, language: string): ImportEntry[] {
     imports.push({ source, isRelative: source.startsWith(".") });
   }
 
+  // Strip comments to avoid matching import-like patterns in comments
+  const code = stripComments(content);
+
   if (["typescript", "javascript", "tsx"].includes(language)) {
     // import ... from "source"
-    for (const m of content.matchAll(/\bimport\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g)) {
+    for (const m of code.matchAll(/\bimport\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g)) {
       add(m[1]!);
     }
     // require("source")
-    for (const m of content.matchAll(/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g)) {
+    for (const m of code.matchAll(/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g)) {
       add(m[1]!);
     }
   } else if (language === "python") {
     // from X import ... or import X
-    for (const m of content.matchAll(/^\s*(?:from\s+([\w.]+)|import\s+([\w.]+))/gm)) {
+    for (const m of code.matchAll(/^\s*(?:from\s+([\w.]+)|import\s+([\w.]+))/gm)) {
       add(m[1] ?? m[2]!);
     }
   } else if (language === "go") {
     // import "pkg" or import ( "pkg" )
-    for (const m of content.matchAll(/["']([^"']+)["']/g)) {
-      if (content.includes("import")) add(m[1]!);
+    for (const m of code.matchAll(/["']([^"']+)["']/g)) {
+      if (code.includes("import")) add(m[1]!);
     }
   } else if (language === "rust") {
     // use crate::X or use X
-    for (const m of content.matchAll(/^\s*use\s+([\w:]+)/gm)) {
+    for (const m of code.matchAll(/^\s*use\s+([\w:]+)/gm)) {
       add(m[1]!);
     }
   }

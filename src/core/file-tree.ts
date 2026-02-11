@@ -50,6 +50,8 @@ export const TREE_NOISE = [
   // Lock files
   "package-lock.json", "bun.lock", "yarn.lock", "pnpm-lock.yaml",
   "Cargo.lock", "Gemfile.lock", "composer.lock", "poetry.lock",
+  // Test files
+  "*.test.*", "*.spec.*",
   // Build artifacts
   "tsconfig.tsbuildinfo", "*.bun-build",
   // Config noise (not useful for code understanding)

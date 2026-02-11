@@ -57,7 +57,7 @@ describe("analyzeArchitecture", () => {
     expect(result!.content).toContain("Entry points");
   });
 
-  test("detects import flow between directories", () => {
+  test("does not include import flow (moved to Dependencies)", () => {
     const sigs: FileSignatures[] = [
       makeFS("src/routes/api.ts", {
         imports: [{ source: "../services/auth", isRelative: true }],
@@ -69,7 +69,7 @@ describe("analyzeArchitecture", () => {
     const allFiles = ["src/routes/api.ts", "src/services/auth.ts", "src/models/user.ts"];
     const result = analyzeArchitecture(makeProject(), sigs, allFiles);
     expect(result).not.toBeNull();
-    expect(result!.content).toContain("Import flow");
+    expect(result!.content).not.toContain("Import flow");
   });
 
   test("shows monorepo info when present", () => {
@@ -291,6 +291,32 @@ describe("analyzeDependencies", () => {
     expect(result!.content).toContain("express");
     expect(result!.content).toContain("zod");
     expect(result!.content).toContain("@prisma/client");
+  });
+
+  test("filters out false positive external deps", () => {
+    const sigs: FileSignatures[] = [
+      makeFS("src/app.ts", {
+        imports: [
+          { source: "express", isRelative: false },
+          { source: "module", isRelative: false },
+          { source: "source", isRelative: false },
+          { source: "pkg", isRelative: false },
+          { source: "type", isRelative: false },
+          { source: "types", isRelative: false },
+          { source: "node:fs", isRelative: false },
+          { source: "node:path", isRelative: false },
+          { source: "x", isRelative: false },  // single char
+        ],
+      }),
+    ];
+    const result = analyzeDependencies(sigs);
+    expect(result).not.toBeNull();
+    expect(result!.content).toContain("express");
+    expect(result!.content).not.toContain("module");
+    expect(result!.content).not.toContain("source");
+    expect(result!.content).not.toContain("\"pkg\"");
+    expect(result!.content).not.toContain("node:fs");
+    expect(result!.content).not.toContain("node:path");
   });
 
   test("returns null when no imports", () => {

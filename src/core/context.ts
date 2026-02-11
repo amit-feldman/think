@@ -511,7 +511,7 @@ export async function generateProjectContext(
     allocation.keyFiles
   );
 
-  const codeMapResult = buildCodeMap(allSignatures, config, allocation.codeMap);
+  let codeMapResult = buildCodeMap(allSignatures, config, allocation.codeMap);
   truncated.push(...codeMapResult.truncatedFiles);
 
   const knowledgeResult = await buildKnowledge(
@@ -548,6 +548,20 @@ export async function generateProjectContext(
   };
 
   allocation = redistributeSurplus(allocation, used);
+
+  // If significant budget remains (>30% unused), re-run code map with expanded budget
+  const totalUsed = Object.values(used).reduce((a, b) => a + b, 0);
+  const unusedRatio = 1 - totalUsed / totalBudget;
+  if (unusedRatio > 0.3 && codeMapResult.truncatedFiles.length > 0) {
+    const surplus = totalBudget - totalUsed;
+    const expandedCodeMapBudget = codeMapResult.tokens + surplus;
+    const expanded = buildCodeMap(allSignatures, config, expandedCodeMapBudget);
+    codeMapResult = expanded;
+    truncated.length = 0;
+    truncated.push(...expanded.truncatedFiles);
+    used.codeMap = expanded.tokens;
+    allocation = redistributeSurplus(allocation, used);
+  }
 
   // Re-check if sections need truncation after redistribution
   const sections: ContextSection[] = [];

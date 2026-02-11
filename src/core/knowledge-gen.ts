@@ -88,17 +88,6 @@ export function analyzeArchitecture(
     }
   }
 
-  // Import flow between directories
-  const dirImports = buildDirImportFlow(fileSignatures);
-  if (dirImports.size > 0) {
-    lines.push("");
-    lines.push("**Import flow:**");
-    for (const [fromDir, toDirs] of dirImports) {
-      const targets = [...toDirs].slice(0, 5).join(", ");
-      lines.push(`- \`${fromDir}/\` → {${targets}}`);
-    }
-  }
-
   // Entry points
   const entryPoints = findEntryPoints(allFiles);
   if (entryPoints.length > 0) {
@@ -507,14 +496,23 @@ function collectExternalDeps(fileSignatures: FileSignatures[]): string[] {
     }
   }
 
-  // Filter out Node built-ins
+  // Filter out Node built-ins, noise, and false positives
   const builtins = new Set([
     "fs", "path", "os", "http", "https", "url", "util", "crypto",
     "stream", "events", "child_process", "cluster", "net", "tls",
     "dns", "readline", "assert", "buffer", "console", "process",
     "querystring", "string_decoder", "timers", "tty", "v8", "vm",
-    "zlib", "fs/promises", "node:fs", "node:path", "node:os",
+    "zlib", "fs/promises",
+    // Common false positives from non-import regex matches
+    "module", "source", "pkg", "type", "types",
   ]);
 
-  return [...deps].filter((d) => !builtins.has(d)).sort();
+  return [...deps].filter((d) => {
+    if (builtins.has(d)) return false;
+    // Filter node: protocol imports
+    if (d.startsWith("node:")) return false;
+    // Filter single-character package names (likely false positives)
+    if (d.length <= 1) return false;
+    return true;
+  }).sort();
 }

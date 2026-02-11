@@ -519,9 +519,9 @@ export function publicApi(): void {}`,
 
     const result = await generateProjectContext(projectDir, {
       dryRun: true,
-      budget: 1500,
+      budget: 800,
     });
-    // Some files should be truncated from code map
+    // Some files should be truncated from code map even after budget expansion
     expect(result.truncated.length).toBeGreaterThan(0);
 
     await rm(projectDir, { recursive: true });
@@ -692,6 +692,31 @@ export function publicApi(): void {}`,
     if (autoPos !== -1) {
       expect(userPos).toBeLessThan(autoPos);
     }
+
+    await rm(projectDir, { recursive: true });
+  });
+
+  test("expands code map when budget is underutilized", async () => {
+    const projectDir = await setupProject({});
+
+    // Create enough files that some get truncated at default budget
+    for (let i = 0; i < 30; i++) {
+      await writeFile(
+        join(projectDir, "src", `mod${i}.ts`),
+        `export function fn${i}(x: number): number { return x * ${i}; }\nexport class Cls${i} { method(): void {} }`
+      );
+    }
+
+    // Run with a large budget — most sections will use little, surplus should expand code map
+    const result = await generateProjectContext(projectDir, {
+      dryRun: true,
+      budget: 20000,
+    });
+
+    const codeMap = result.sections.find((s) => s.id === "codeMap");
+    expect(codeMap).toBeTruthy();
+    // With 20k budget and small project, most files should be included
+    expect(result.truncated.length).toBe(0);
 
     await rm(projectDir, { recursive: true });
   });

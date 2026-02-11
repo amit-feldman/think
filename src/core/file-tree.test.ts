@@ -39,7 +39,25 @@ describe("TREE_NOISE", () => {
     expect(TREE_NOISE).toContain("tsconfig.tsbuildinfo");
   });
 
+  test("includes test file patterns", () => {
+    expect(TREE_NOISE).toContain("*.test.*");
+    expect(TREE_NOISE).toContain("*.spec.*");
+  });
+
   const tmpDir = join(tmpdir(), "think-test-treenoise-" + Date.now());
+
+  test("test files are excluded from tree output", async () => {
+    await mkdir(join(tmpDir, "src"), { recursive: true });
+    await writeFile(join(tmpDir, "src", "index.ts"), "export const x = 1;");
+    await writeFile(join(tmpDir, "src", "index.test.ts"), "test('x', () => {});");
+    await writeFile(join(tmpDir, "src", "utils.spec.ts"), "test('y', () => {});");
+
+    const tree = await generateFileTree(tmpDir);
+    expect(tree).toContain("index.ts");
+    expect(tree).not.toContain("index.test.ts");
+    expect(tree).not.toContain("utils.spec.ts");
+    await rm(tmpDir, { recursive: true });
+  });
 
   test("noise files are excluded from tree output", async () => {
     await mkdir(join(tmpDir, "src"), { recursive: true });

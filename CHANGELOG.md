@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-02-11
+
+### Fixed
+- Tree no longer lists test files individually (`*.test.*`, `*.spec.*` suppressed from tree display)
+- Duplicate import flow removed from Architecture section (kept only in Dependencies)
+- External deps false positives: import scanner now strips comments before regex matching; added noise filter for `module`, `source`, `pkg`, `type`, `types`, `node:*` protocol, single-char names
+
+### Changed
+- Budget redistribution: when >30% of total budget is unused, code map is re-run with expanded budget to fill surplus
+
 ## [0.6.1] - 2026-02-11
 
 ### Added
