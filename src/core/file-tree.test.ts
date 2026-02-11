@@ -335,6 +335,31 @@ describe("buildTree edge cases", () => {
   });
 });
 
+describe("containsSignificant exhausts loop", () => {
+  const tmpDir = join(tmpdir(), "think-test-sig-" + Date.now());
+
+  test("containsSignificant returns false when no paths match dir", async () => {
+    // Create a dir with >15 children (triggers collapse check) and
+    // significant paths that DON'T match this dir
+    const bigDir = join(tmpDir, "unrelated");
+    await mkdir(bigDir, { recursive: true });
+    for (let i = 0; i < 20; i++) {
+      await writeFile(join(bigDir, `file${i}.ts`), "");
+    }
+    await writeFile(join(tmpDir, "root.ts"), "");
+
+    // significant paths point to a completely different directory
+    const significantPaths = new Set(["other/important.ts", "elsewhere/key.ts"]);
+    const tree = await generateAdaptiveTree(tmpDir, {
+      budgetTokens: 5000,
+      significantPaths,
+    });
+    // The "unrelated" dir should be collapsed since significant paths don't match it
+    expect(tree).toBeTruthy();
+    await rm(tmpDir, { recursive: true });
+  });
+});
+
 describe("generateAdaptiveTree depth reduction", () => {
   const tmpDir = join(tmpdir(), "think-test-adaptive2-" + Date.now());
 

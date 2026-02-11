@@ -27,7 +27,8 @@ export interface ContextResult {
   truncated: string[];
 }
 
-const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
+// Dynamic: decide supported extensions at runtime based on shipped grammars
+import { getSupportedExtensions } from "./tree-sitter.ts";
 
 const BATCH_SIZE = 20;
 
@@ -114,16 +115,24 @@ function filePriority(relPath: string): number {
 
   // Entry points
   if (
-    name === "index.ts" ||
-    name === "index.tsx" ||
-    name === "index.js" ||
-    name === "main.ts" ||
-    name === "main.tsx" ||
-    name === "main.js" ||
+    // TS/JS
+    name === "index.ts" || name === "index.tsx" || name === "index.js" ||
+    name === "main.ts" || name === "main.tsx" || name === "main.js" ||
     name === "mod.ts" ||
-    dir.startsWith("bin") ||
-    dir.includes("/bin/") ||
-    name.startsWith("bin.")
+    // Python
+    name === "__main__.py" || name === "main.py" || name === "app.py" || name === "cli.py" ||
+    // Go
+    name === "main.go" || dir.startsWith("cmd/") || dir.includes("/cmd/") ||
+    // Rust
+    name === "main.rs" || name === "lib.rs" || name === "mod.rs" ||
+    // Java
+    name === "Main.java" || name === "Application.java" ||
+    // C#
+    name === "Program.cs" || name === "Startup.cs" ||
+    // PHP
+    name === "index.php" || name.toLowerCase() === "artisan" ||
+    // Ruby
+    dir.startsWith("bin") || dir.includes("/bin/") || name.startsWith("bin.")
   ) {
     return 10;
   }
@@ -247,6 +256,7 @@ function buildCodeMap(
   let totalTokens = 0;
   const truncatedFiles: string[] = [];
   const exportsOnly = config.signature_depth === "exports";
+  const useSkeleton = (config as any).code_map_format !== "signatures"; // default skeleton
 
   for (const file of prioritized) {
     const sigs = exportsOnly
@@ -255,7 +265,12 @@ function buildCodeMap(
 
     if (sigs.length === 0) continue;
 
-    const sigBlock = sanitizeCodeBlock(sigs.map((s) => s.signature).join("\n"));
+    const lines = sigs.map((s) => s.signature);
+    const body = useSkeleton ? lines.join("\n") : lines
+      .map((l) => l.replace(/\s*\{\s*\.\.\.\s*\}|\s*:\s*\.\.\./g, ""))
+      .join("\n");
+
+    const sigBlock = sanitizeCodeBlock(body);
     const entry = `### ${file.path}\n\`\`\`${file.language}\n${sigBlock}\n\`\`\``;
     const entryTokens = estimateTokens(entry);
 
@@ -345,9 +360,10 @@ export async function generateProjectContext(
 
   // Walk project for all files
   const allFiles = await walkDir(projectDir, projectDir, DEFAULT_IGNORE);
+  const supportedExts = new Set(await getSupportedExtensions());
   const sourceFiles = allFiles.filter((f) => {
     const ext = extname(f);
-    if (!SOURCE_EXTENSIONS.has(ext)) return false;
+    if (!supportedExts.has(ext)) return false;
     if (matchesGlob(f, config.exclude_signatures)) return false;
     return true;
   });

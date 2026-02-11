@@ -11,7 +11,10 @@ describe("contextConfigSchema", () => {
     const result = contextConfigSchema.parse({});
     expect(result.budget).toBe(12000);
     expect(result.key_files).toEqual([]);
-    expect(result.exclude_signatures).toEqual(["**/*.test.ts", "**/*.spec.ts"]);
+    expect(Array.isArray(result.exclude_signatures)).toBe(true);
+    expect(result.exclude_signatures.length).toBeGreaterThanOrEqual(2);
+    expect(result.exclude_signatures).toContain("**/*.test.*");
+    expect(result.exclude_signatures).toContain("**/*.spec.*");
     expect(result.knowledge_dir).toBe(".think/knowledge");
     expect(result.signature_depth).toBe("exports");
   });

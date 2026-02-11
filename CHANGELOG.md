@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-02-11
+
+### Added
+- Tree-sitter AST extraction for 10 languages: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, Ruby, PHP
+- "Slice to body" technique preserves params, types, generics, decorators — everything except implementation
+- `sigSlice` helper consolidates body-stripping patterns across all language queries
+
+### Changed
+- Extractor rewritten as thin wrapper over `extractWithTreeSitter()` (removed ~330 lines of regex-based TS/JS extraction)
+- Parser instance reuse in tree-sitter module (was creating new parser per call)
+
+### Fixed
+- C# namespace recursion — classes inside namespaces are now found
+- PHP braced namespace recursion — classes inside `namespace App { }` are now found
+- Removed unused `require("fs")` and `require("path")` from project-detect
+
+### Removed
+- Regex-based signature extraction (fully replaced by tree-sitter AST)
+
 ## [0.5.8] - 2026-02-10
 
 ### Changed
@@ -67,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **`think context`** — Project-level context generation
-  - Regex-based signature extraction (functions, types, classes, enums)
+  - Signature extraction (functions, types, classes, enums)
   - Token-aware adaptive file tree (collapses large directories, adjusts depth)
   - Budget allocation across sections (overview, structure, key files, code map, knowledge)
   - `.think.yaml` project config (optional — works with zero config)

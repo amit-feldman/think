@@ -23,7 +23,7 @@ export interface WorkspaceInfo {
   type?: string; // "app" | "package" | "service" | etc.
 }
 
-export type Runtime = "bun" | "node" | "deno" | "rust" | "python" | "go" | "java" | "ruby" | "unknown";
+export type Runtime = "bun" | "node" | "deno" | "rust" | "python" | "go" | "java" | "ruby" | "php" | "unknown";
 
 /**
  * Detect project info from the given directory
@@ -87,6 +87,7 @@ function detectRuntime(dir: string): Runtime {
   if (existsSync(join(dir, "Cargo.toml"))) return "rust";
   if (existsSync(join(dir, "go.mod"))) return "go";
   if (existsSync(join(dir, "pyproject.toml")) || existsSync(join(dir, "requirements.txt"))) return "python";
+  if (existsSync(join(dir, "composer.json")) || existsSync(join(dir, "public/index.php")) || existsSync(join(dir, "index.php"))) return "php";
   if (existsSync(join(dir, "Gemfile"))) return "ruby";
   if (existsSync(join(dir, "pom.xml")) || existsSync(join(dir, "build.gradle"))) return "java";
   if (existsSync(join(dir, "package.json"))) return "node";
@@ -235,6 +236,42 @@ function detectFrameworks(dir: string, pkg: any): string[] {
   if (deps?.electron) frameworks.push("Electron");
   if (deps?.["react-native"]) frameworks.push("React Native");
   if (deps?.expo) frameworks.push("Expo");
+
+  // PHP (composer)
+  const composerPath = join(dir, "composer.json");
+  if (existsSync(composerPath)) {
+    try {
+      const composer = JSON.parse(readFileSync(composerPath, "utf-8"));
+      const req = { ...(composer.require || {}), ...(composer["require-dev"] || {}) };
+      if (req["laravel/framework"]) frameworks.push("Laravel");
+      if (req["symfony/symfony"]) frameworks.push("Symfony");
+    } catch {}
+  }
+
+  // C# (.csproj) — rough heuristic for ASP.NET Core
+  const csproj = (readdirSync(dir, { withFileTypes: true }) || []).find((e) => e.isFile() && e.name.endsWith(".csproj"));
+  if (csproj) {
+    try {
+      const content = readFileSync(join(dir, csproj.name), "utf-8");
+      if (content.includes("Microsoft.AspNetCore")) frameworks.push("ASP.NET");
+    } catch {}
+  }
+
+  // Java (pom.xml/gradle) — Spring Boot
+  const pomPath = join(dir, "pom.xml");
+  if (existsSync(pomPath)) {
+    try {
+      const pom = readFileSync(pomPath, "utf-8");
+      if (pom.includes("spring-boot-starter")) frameworks.push("Spring Boot");
+    } catch {}
+  }
+  const gradlePath = join(dir, "build.gradle");
+  if (existsSync(gradlePath)) {
+    try {
+      const gradle = readFileSync(gradlePath, "utf-8");
+      if (gradle.includes("org.springframework.boot")) frameworks.push("Spring Boot");
+    } catch {}
+  }
 
   // AI/ML
   if (deps?.["@anthropic-ai/sdk"] || deps?.["@anthropic-ai/claude-agent-sdk"]) {

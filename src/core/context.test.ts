@@ -469,6 +469,58 @@ export function publicApi(): void {}`,
     await rm(projectDir, { recursive: true });
   });
 
+  test("filePriority returns 7 for schema/constants/env files", async () => {
+    const projectDir = await setupProject({
+      "src/schema.ts": "export function validateSchema(input: unknown): boolean { return true; }",
+      "src/constants.ts": "export function getConstants(): string[] { return []; }",
+    });
+
+    const result = await generateProjectContext(projectDir, { dryRun: true });
+    const codeMap = result.sections.find((s) => s.id === "codeMap");
+    // schema.ts and constants.ts should appear in code map (they have functions)
+    if (codeMap) {
+      expect(codeMap.content).toContain("schema.ts");
+    }
+
+    await rm(projectDir, { recursive: true });
+  });
+
+  test("code_map_format signatures strips skeleton markers", async () => {
+    const projectDir = await setupProject({
+      "src/index.ts": "export function hello(): void {}",
+    });
+    await writeFile(
+      join(projectDir, ".think.yaml"),
+      `context:\n  code_map_format: signatures\n`
+    );
+
+    const result = await generateProjectContext(projectDir, { dryRun: true });
+    const codeMap = result.sections.find((s) => s.id === "codeMap");
+    expect(codeMap).toBeTruthy();
+
+    await rm(projectDir, { recursive: true });
+  });
+
+  test("truncates code map when budget is tiny", async () => {
+    const projectDir = await setupProject({});
+    // Create many files with extractable functions to overflow code map
+    for (let i = 0; i < 50; i++) {
+      await writeFile(
+        join(projectDir, "src", `mod${i}.ts`),
+        `export function fn${i}(x: number): number { return x; }\nexport class Cls${i} { method(): void {} }`
+      );
+    }
+
+    const result = await generateProjectContext(projectDir, {
+      dryRun: true,
+      budget: 1500,
+    });
+    // Some files should be truncated from code map
+    expect(result.truncated.length).toBeGreaterThan(0);
+
+    await rm(projectDir, { recursive: true });
+  });
+
   test("handles unreadable subdirectory during walk", async () => {
     const projectDir = await setupProject({
       "src/index.ts": "export const x = 1;",

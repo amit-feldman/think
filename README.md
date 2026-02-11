@@ -64,7 +64,8 @@ think context --dry-run          # Preview without writing
 Output includes:
 - Project overview (runtime, frameworks, tooling)
 - Token-aware adaptive file tree
-- Code map (function/type signatures)
+- Code map — AST-based signature extraction via tree-sitter
+  - Supported languages: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, Ruby, PHP
 - Key files (full source for important files)
 - Knowledge base (from `.think/knowledge/*.md`)
 

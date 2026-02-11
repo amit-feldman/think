@@ -6,9 +6,22 @@ import { z } from "zod";
 export const contextConfigSchema = z.object({
   budget: z.number().int().min(1000).max(100000).default(12000),
   key_files: z.array(z.string()).default([]),
-  exclude_signatures: z.array(z.string()).default(["**/*.test.ts", "**/*.spec.ts"]),
+  exclude_signatures: z
+    .array(z.string())
+    .default([
+      "**/*.test.*",
+      "**/*.spec.*",
+      "**/*_test.go",
+      "**/test_*.py",
+      "**/*_test.rs",
+      "**/*Test.java",
+      "**/*Test.cs",
+      "**/tests/**",
+      "**/test/**",
+    ]),
   knowledge_dir: z.string().default(".think/knowledge"),
   signature_depth: z.enum(["exports", "all"]).default("exports"),
+  code_map_format: z.enum(["skeleton", "signatures"]).default("skeleton"),
 });
 
 export type ValidatedContextConfig = z.infer<typeof contextConfigSchema>;
