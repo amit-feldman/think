@@ -211,8 +211,10 @@ export type Status = "active" | "inactive";`,
     // Should complete without error
     expect(result.markdown).toBeTruthy();
     const knowledge = result.sections.find((s) => s.id === "knowledge");
-    // Knowledge section should not exist since dir doesn't exist
-    expect(knowledge).toBeUndefined();
+    // No user knowledge should exist (auto may fill in)
+    if (knowledge) {
+      expect(knowledge.content).not.toContain("nonexistent/docs");
+    }
 
     await rm(projectDir, { recursive: true });
   });
@@ -230,9 +232,11 @@ export type Status = "active" | "inactive";`,
     );
 
     const result = await generateProjectContext(projectDir, { dryRun: true });
-    // Should not include knowledge from outside project
+    // Should not include knowledge from outside project (auto may fill in)
     const knowledge = result.sections.find((s) => s.id === "knowledge");
-    expect(knowledge).toBeUndefined();
+    if (knowledge) {
+      expect(knowledge.content).not.toContain("../../etc");
+    }
 
     await rm(projectDir, { recursive: true });
   });
@@ -383,20 +387,20 @@ export type Status = "active" | "inactive";`,
     await rm(projectDir, { recursive: true });
   });
 
-  test("filePriority scores type definition files higher", async () => {
+  test("implementation files appear before type-only files", async () => {
     const projectDir = await setupProject({
       "src/types.ts": "export type Status = 'active' | 'inactive';",
-      "src/deep/nested/util.ts": "export function util(): void {}",
+      "src/service.ts": "export function handleRequest(): void {}\nexport function processData(): void {}",
     });
 
     const result = await generateProjectContext(projectDir, { dryRun: true });
     const codeMap = result.sections.find((s) => s.id === "codeMap");
     if (codeMap && codeMap.content) {
+      const servicePos = codeMap.content.indexOf("service.ts");
       const typesPos = codeMap.content.indexOf("types.ts");
-      const utilPos = codeMap.content.indexOf("deep/nested/util.ts");
-      // types.ts should have higher priority and appear first
-      if (typesPos !== -1 && utilPos !== -1) {
-        expect(typesPos).toBeLessThan(utilPos);
+      // Implementation file should appear before type-only file
+      if (servicePos !== -1 && typesPos !== -1) {
+        expect(servicePos).toBeLessThan(typesPos);
       }
     }
 
@@ -462,9 +466,11 @@ export function publicApi(): void {}`,
 
     const result = await generateProjectContext(projectDir, { dryRun: true });
     expect(result.markdown).toBeTruthy();
-    // Knowledge section should not exist since readdir failed
+    // No user knowledge should exist (auto may fill in)
     const knowledge = result.sections.find((s) => s.id === "knowledge");
-    expect(knowledge).toBeUndefined();
+    if (knowledge) {
+      expect(knowledge.content).not.toContain("readdir");
+    }
 
     await rm(projectDir, { recursive: true });
   });
@@ -521,6 +527,68 @@ export function publicApi(): void {}`,
     await rm(projectDir, { recursive: true });
   });
 
+  test("per-file cap prevents one file from consuming entire budget", async () => {
+    const projectDir = await setupProject({});
+
+    // Create one file with many interfaces (verbose) and several small impl files
+    const bigTypes = Array.from({ length: 20 }, (_, i) =>
+      `export interface Model${i} {\n  id: string;\n  name: string;\n  value: number;\n  active: boolean;\n  createdAt: Date;\n}`
+    ).join("\n\n");
+    await writeFile(join(projectDir, "src", "types.ts"), bigTypes);
+
+    for (let i = 0; i < 5; i++) {
+      await writeFile(
+        join(projectDir, "src", `service${i}.ts`),
+        `export function handle${i}(): void {}`
+      );
+    }
+
+    const result = await generateProjectContext(projectDir, {
+      dryRun: true,
+      budget: 3000,
+    });
+    const codeMap = result.sections.find((s) => s.id === "codeMap");
+
+    // At least some service files should appear in the code map
+    if (codeMap) {
+      const serviceCount = (codeMap.content.match(/service\d\.ts/g) || []).length;
+      expect(serviceCount).toBeGreaterThan(0);
+    }
+
+    await rm(projectDir, { recursive: true });
+  });
+
+  test("verbose interfaces are collapsed when file exceeds cap", async () => {
+    const projectDir = await setupProject({});
+
+    // Create a types file with very verbose interfaces
+    const verboseTypes = Array.from({ length: 15 }, (_, i) =>
+      `export interface VerboseModel${i} {\n` +
+      Array.from({ length: 10 }, (_, j) => `  field${j}: string;`).join("\n") +
+      `\n}`
+    ).join("\n\n");
+    await writeFile(join(projectDir, "src", "models.ts"), verboseTypes);
+
+    // Also add an impl file so budget is split
+    await writeFile(
+      join(projectDir, "src", "handler.ts"),
+      "export function handle(): void {}"
+    );
+
+    const result = await generateProjectContext(projectDir, {
+      dryRun: true,
+      budget: 3000,
+    });
+    const codeMap = result.sections.find((s) => s.id === "codeMap");
+
+    if (codeMap && codeMap.content.includes("models.ts")) {
+      // If models.ts made it in, it should have collapsed bodies
+      expect(codeMap.content).toContain("{ ... }");
+    }
+
+    await rm(projectDir, { recursive: true });
+  });
+
   test("handles unreadable subdirectory during walk", async () => {
     const projectDir = await setupProject({
       "src/index.ts": "export const x = 1;",
@@ -539,5 +607,113 @@ export function publicApi(): void {}`,
       await chmod(unreadable, 0o755);
       await rm(projectDir, { recursive: true });
     }
+  });
+
+  test("barrel files get low priority in code map", async () => {
+    const projectDir = await setupProject({
+      "src/index.ts": `export { foo } from "./utils";\nexport { bar } from "./helpers";`,
+      "src/utils.ts": "export function foo(): void {}",
+      "src/helpers.ts": "export function bar(): void {}",
+    });
+
+    const result = await generateProjectContext(projectDir, { dryRun: true });
+    const codeMap = result.sections.find((s) => s.id === "codeMap");
+    if (codeMap) {
+      // Implementation files should appear before barrel index
+      const utilsPos = codeMap.content.indexOf("utils.ts");
+      const indexPos = codeMap.content.indexOf("index.ts");
+      // Barrel may not appear at all, or after impl files
+      if (utilsPos !== -1 && indexPos !== -1) {
+        expect(utilsPos).toBeLessThan(indexPos);
+      }
+    }
+
+    await rm(projectDir, { recursive: true });
+  });
+
+  test("handles file with signatures exceeding very tiny per-file cap", async () => {
+    const projectDir = await setupProject({});
+
+    // Create many files so per-file cap is very tiny, and one verbose file
+    for (let i = 0; i < 20; i++) {
+      await writeFile(
+        join(projectDir, "src", `mod${i}.ts`),
+        `export function f${i}(): void {}`
+      );
+    }
+    // One file with a single very long signature that won't fit in per-file cap
+    const longSig = `export function veryLongFunctionName(${Array.from(
+      { length: 50 },
+      (_, i) => `param${i}: string`
+    ).join(", ")}): void {}`;
+    await writeFile(join(projectDir, "src", "verbose.ts"), longSig);
+
+    const result = await generateProjectContext(projectDir, {
+      dryRun: true,
+      budget: 1500,
+    });
+    expect(result.markdown).toBeTruthy();
+
+    await rm(projectDir, { recursive: true });
+  });
+
+  test("auto-generates knowledge when no user knowledge exists", async () => {
+    const projectDir = await setupProject({
+      "src/routes/api.ts": `import { authService } from "../services/auth";\nexport function getUsers(): void {}`,
+      "src/services/auth.ts": `import { User } from "../models/user";\nexport function authenticate(): void {}`,
+      "src/models/user.ts": "export interface User { id: string; name: string; }",
+    });
+
+    const result = await generateProjectContext(projectDir, { dryRun: true });
+    const knowledge = result.sections.find((s) => s.id === "knowledge");
+    expect(knowledge).toBeTruthy();
+    expect(knowledge!.content).toContain("(auto)");
+
+    await rm(projectDir, { recursive: true });
+  });
+
+  test("user knowledge takes priority over auto knowledge", async () => {
+    const projectDir = await setupProject({
+      "src/routes/api.ts": `import { auth } from "../services/auth";\nexport function getUsers(): void {}`,
+      "src/services/auth.ts": "export function authenticate(): void {}",
+    });
+
+    const knowledgeDir = join(projectDir, ".think", "knowledge");
+    await mkdir(knowledgeDir, { recursive: true });
+    await writeFile(join(knowledgeDir, "architecture.md"), "# Architecture\n\nCustom architecture docs.");
+
+    const result = await generateProjectContext(projectDir, { dryRun: true });
+    const knowledge = result.sections.find((s) => s.id === "knowledge");
+    expect(knowledge).toBeTruthy();
+    // User knowledge appears first
+    expect(knowledge!.content).toContain("Custom architecture docs");
+    const userPos = knowledge!.content.indexOf("Custom architecture docs");
+    const autoPos = knowledge!.content.indexOf("(auto)");
+    if (autoPos !== -1) {
+      expect(userPos).toBeLessThan(autoPos);
+    }
+
+    await rm(projectDir, { recursive: true });
+  });
+
+  test("auto_knowledge: false disables auto generation", async () => {
+    const projectDir = await setupProject({
+      "src/routes/api.ts": "export function getUsers(): void {}",
+      "src/services/auth.ts": "export function authenticate(): void {}",
+    });
+
+    await writeFile(
+      join(projectDir, ".think.yaml"),
+      `context:\n  auto_knowledge: false\n`
+    );
+
+    const result = await generateProjectContext(projectDir, { dryRun: true });
+    const knowledge = result.sections.find((s) => s.id === "knowledge");
+    // Should not contain auto-generated entries
+    if (knowledge) {
+      expect(knowledge.content).not.toContain("(auto)");
+    }
+
+    await rm(projectDir, { recursive: true });
   });
 });

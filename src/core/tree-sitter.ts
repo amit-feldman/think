@@ -28,12 +28,15 @@ const GRAMMAR_FILES: Record<string, string> = {
 export type GrammarKey = keyof typeof GRAMMAR_FILES;
 
 const baseDir = dirname(fileURLToPath(import.meta.url));
-// Try dist/wasm when running built code, else fallback to project dist/wasm when running from src
+// Candidate paths for WASM grammars (checked in order):
+// 1. <baseDir>/wasm — installed npm package: dist/cli.js → dist/wasm/
+// 2. <baseDir>/../wasm — built output: dist/cli.js → wasm/ (legacy layout)
+// 3. <baseDir>/../../dist/wasm — dev from src: src/core/ → dist/wasm/
+const inDist = resolve(baseDir, "wasm");
 const distSibling = resolve(baseDir, "../wasm");
 const projectDist = resolve(baseDir, "../../dist/wasm");
 async function pickWasmDir(): Promise<string> {
-  // Prefer dist/wasm sibling (built output), fall back to project dist/wasm (dev from src)
-  // Callers always check individual file existence, so returning a missing dir is safe
+  if (await exists(inDist)) return inDist;
   return (await exists(distSibling)) ? distSibling : projectDist;
 }
 
@@ -94,7 +97,7 @@ export async function parseSource(content: string, key: GrammarKey): Promise<any
 export const availableGrammarKeys: GrammarKey[] = Object.keys(GRAMMAR_FILES) as GrammarKey[];
 
 // Test-only export
-export const __ts_test = { getLanguage, exists, pickWasmDir, loadGrammar };
+export const __ts_test = { getLanguage, exists, pickWasmDir, loadGrammar, inDist, distSibling, projectDist };
 
 const LANG_EXTS: Record<GrammarKey, string[]> = {
   javascript: [".js", ".jsx", ".mjs"],

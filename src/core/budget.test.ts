@@ -40,6 +40,36 @@ describe("allocateBudget", () => {
   });
 });
 
+describe("allocateBudget monorepo weights", () => {
+  test("monorepo gives more to overview and structure", () => {
+    const normal = allocateBudget(10000);
+    const mono = allocateBudget(10000, { monorepo: true });
+    expect(mono.overview).toBeGreaterThan(normal.overview);
+    expect(mono.structure).toBeGreaterThan(normal.structure);
+  });
+
+  test("monorepo gives less to keyFiles", () => {
+    const normal = allocateBudget(10000);
+    const mono = allocateBudget(10000, { monorepo: true });
+    expect(mono.keyFiles).toBeLessThan(normal.keyFiles);
+  });
+
+  test("monorepo allocations sum correctly", () => {
+    const mono = allocateBudget(10000, { monorepo: true });
+    expect(mono.overview).toBe(1000);
+    expect(mono.structure).toBe(1800);
+    expect(mono.keyFiles).toBe(2000);
+    expect(mono.codeMap).toBe(3700);
+    expect(mono.knowledge).toBe(1500);
+  });
+
+  test("without monorepo flag uses default weights", () => {
+    const result = allocateBudget(10000, { monorepo: false });
+    expect(result.overview).toBe(800);
+    expect(result.structure).toBe(1200);
+  });
+});
+
 describe("redistributeSurplus", () => {
   test("returns same allocation when no surplus or demand", () => {
     const allocation = allocateBudget(10000);

@@ -68,6 +68,7 @@ Output includes:
   - Supported languages: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, Ruby, PHP
 - Key files (full source for important files)
 - Knowledge base (from `.think/knowledge/*.md`)
+- Auto-generated knowledge — architecture layers, conventions, hub files, and dependency graph inferred from imports and file structure (fills unused knowledge budget automatically)
 
 Configure with `.think.yaml` in your project root (optional — works with zero config).
 

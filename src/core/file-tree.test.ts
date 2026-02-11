@@ -4,6 +4,7 @@ import {
   generateFileTreeMarkdown,
   generateAdaptiveTree,
   DEFAULT_IGNORE,
+  TREE_NOISE,
 } from "./file-tree.ts";
 import { thinkPath, CONFIG } from "./config.ts";
 import { writeFile, mkdir, rm, chmod } from "fs/promises";
@@ -25,6 +26,49 @@ describe("DEFAULT_IGNORE", () => {
   test("includes glob patterns", () => {
     expect(DEFAULT_IGNORE).toContain("*.pyc");
     expect(DEFAULT_IGNORE).toContain(".env.*");
+  });
+});
+
+describe("TREE_NOISE", () => {
+  test("includes lock files and config noise", () => {
+    expect(TREE_NOISE).toContain("package-lock.json");
+    expect(TREE_NOISE).toContain("bun.lock");
+    expect(TREE_NOISE).toContain("yarn.lock");
+    expect(TREE_NOISE).toContain(".gitignore");
+    expect(TREE_NOISE).toContain(".editorconfig");
+    expect(TREE_NOISE).toContain("tsconfig.tsbuildinfo");
+  });
+
+  const tmpDir = join(tmpdir(), "think-test-treenoise-" + Date.now());
+
+  test("noise files are excluded from tree output", async () => {
+    await mkdir(join(tmpDir, "src"), { recursive: true });
+    await writeFile(join(tmpDir, "src", "index.ts"), "export const x = 1;");
+    await writeFile(join(tmpDir, "package.json"), "{}");
+    await writeFile(join(tmpDir, "package-lock.json"), "{}");
+    await writeFile(join(tmpDir, "bun.lock"), "");
+    await writeFile(join(tmpDir, ".gitignore"), "node_modules");
+    await writeFile(join(tmpDir, ".editorconfig"), "root = true");
+    await writeFile(join(tmpDir, ".prettierrc"), "{}");
+
+    const tree = await generateFileTree(tmpDir);
+    expect(tree).toContain("index.ts");
+    expect(tree).toContain("package.json");
+    expect(tree).not.toContain("package-lock.json");
+    expect(tree).not.toContain("bun.lock");
+    expect(tree).not.toContain(".gitignore");
+    expect(tree).not.toContain(".editorconfig");
+    expect(tree).not.toContain(".prettierrc");
+    await rm(tmpDir, { recursive: true });
+  });
+});
+
+describe("DEFAULT_IGNORE additions", () => {
+  test("includes new build cache directories", () => {
+    expect(DEFAULT_IGNORE).toContain(".bun");
+    expect(DEFAULT_IGNORE).toContain(".parcel-cache");
+    expect(DEFAULT_IGNORE).toContain(".svelte-kit");
+    expect(DEFAULT_IGNORE).toContain("__snapshots__");
   });
 });
 

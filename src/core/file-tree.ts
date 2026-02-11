@@ -39,6 +39,28 @@ export const DEFAULT_IGNORE = [
   "*.pyo",
   ".env",
   ".env.*",
+  ".bun",
+  ".parcel-cache",
+  ".svelte-kit",
+  "__snapshots__",
+];
+
+/** Files suppressed from tree display (not from signature extraction walk). */
+export const TREE_NOISE = [
+  // Lock files
+  "package-lock.json", "bun.lock", "yarn.lock", "pnpm-lock.yaml",
+  "Cargo.lock", "Gemfile.lock", "composer.lock", "poetry.lock",
+  // Build artifacts
+  "tsconfig.tsbuildinfo", "*.bun-build",
+  // Config noise (not useful for code understanding)
+  ".gitignore", ".gitkeep", ".gitattributes", ".editorconfig",
+  ".prettierrc", ".prettierrc.*", ".prettierignore",
+  ".eslintrc.*", ".eslintignore",
+  ".lintstagedrc.*", ".commitlintrc.*",
+  ".secretlintrc.*", ".secretlintignore",
+  ".clippy.toml", "rustfmt.toml",
+  ".npmrc", ".yarnrc.*",
+  "*.log",
 ];
 
 const DEFAULT_ANNOTATIONS: Record<string, string> = {
@@ -251,6 +273,7 @@ async function buildTree(
         });
       }
     } else {
+      if (shouldIgnore(entry.name, TREE_NOISE)) continue;
       nodes.push({
         name: entry.name,
         path: relativePath,

@@ -21,20 +21,30 @@ const WEIGHTS = {
   knowledge: 0.15,
 } as const;
 
+const MONOREPO_WEIGHTS = {
+  overview: 0.10,
+  structure: 0.18,
+  keyFiles: 0.20,
+  codeMap: 0.37,
+  knowledge: 0.15,
+} as const;
+
 type SectionKey = keyof typeof WEIGHTS;
 
 const SECTION_KEYS: SectionKey[] = ["overview", "structure", "keyFiles", "codeMap", "knowledge"];
 
 /**
- * Allocate a total token budget across sections using default weights.
+ * Allocate a total token budget across sections.
+ * Monorepos get more budget for overview and structure.
  */
-export function allocateBudget(totalBudget: number): BudgetAllocation {
+export function allocateBudget(totalBudget: number, options?: { monorepo?: boolean }): BudgetAllocation {
+  const w = options?.monorepo ? MONOREPO_WEIGHTS : WEIGHTS;
   return {
-    overview: Math.floor(totalBudget * WEIGHTS.overview),
-    structure: Math.floor(totalBudget * WEIGHTS.structure),
-    keyFiles: Math.floor(totalBudget * WEIGHTS.keyFiles),
-    codeMap: Math.floor(totalBudget * WEIGHTS.codeMap),
-    knowledge: Math.floor(totalBudget * WEIGHTS.knowledge),
+    overview: Math.floor(totalBudget * w.overview),
+    structure: Math.floor(totalBudget * w.structure),
+    keyFiles: Math.floor(totalBudget * w.keyFiles),
+    codeMap: Math.floor(totalBudget * w.codeMap),
+    knowledge: Math.floor(totalBudget * w.knowledge),
   };
 }
 

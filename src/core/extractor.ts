@@ -14,10 +14,16 @@ export interface SignatureEntry {
   async?: boolean;
 }
 
+export interface ImportEntry {
+  source: string;
+  isRelative: boolean;
+}
+
 export interface FileSignatures {
   path: string;
   language: string;
   signatures: SignatureEntry[];
+  imports?: ImportEntry[];
 }
 
 /**
@@ -38,6 +44,49 @@ function languageFromExt(ext: string): string | null {
 }
 
 /**
+ * Scan source code for import statements using regex.
+ * Supports JS/TS (import/require), Python (import/from), Go (import), Rust (use).
+ */
+export function scanImports(content: string, language: string): ImportEntry[] {
+  const imports: ImportEntry[] = [];
+  const seen = new Set<string>();
+
+  function add(source: string) {
+    if (!source || seen.has(source)) return;
+    seen.add(source);
+    imports.push({ source, isRelative: source.startsWith(".") });
+  }
+
+  if (["typescript", "javascript", "tsx"].includes(language)) {
+    // import ... from "source"
+    for (const m of content.matchAll(/\bimport\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g)) {
+      add(m[1]!);
+    }
+    // require("source")
+    for (const m of content.matchAll(/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g)) {
+      add(m[1]!);
+    }
+  } else if (language === "python") {
+    // from X import ... or import X
+    for (const m of content.matchAll(/^\s*(?:from\s+([\w.]+)|import\s+([\w.]+))/gm)) {
+      add(m[1] ?? m[2]!);
+    }
+  } else if (language === "go") {
+    // import "pkg" or import ( "pkg" )
+    for (const m of content.matchAll(/["']([^"']+)["']/g)) {
+      if (content.includes("import")) add(m[1]!);
+    }
+  } else if (language === "rust") {
+    // use crate::X or use X
+    for (const m of content.matchAll(/^\s*use\s+([\w:]+)/gm)) {
+      add(m[1]!);
+    }
+  }
+
+  return imports;
+}
+
+/**
  * Extract signatures from a file on disk.
  */
 export async function extractFileSignatures(
@@ -53,13 +102,21 @@ export async function extractFileSignatures(
   try {
     const content = await readFile(filePath, "utf-8");
     const signatures = await extractWithTreeSitter(content, language);
+    const imports = scanImports(content, language);
 
-    if (!signatures || signatures.length === 0) return null;
+    if (!signatures || signatures.length === 0) {
+      // Still return imports-only result if we found imports
+      if (imports.length > 0) {
+        return { path: relative(rootDir, filePath), language, signatures: [], imports };
+      }
+      return null;
+    }
 
     return {
       path: relative(rootDir, filePath),
       language,
       signatures,
+      imports: imports.length > 0 ? imports : undefined,
     };
   } catch {
     return null;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractFileSignatures } from "./extractor.ts";
+import { extractFileSignatures, scanImports } from "./extractor.ts";
 import { extractWithTreeSitter } from "./queries.ts";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { mkdirSync } from "fs";
@@ -243,6 +243,113 @@ describe("extractFileSignatures", () => {
       const r = await extractFileSignatures(p, tmpDir);
       expect(r === null || (r && r.signatures.length >= 0)).toBe(true);
     }
+    await rm(tmpDir, { recursive: true });
+  });
+
+  test("populates imports field for TS/JS files", async () => {
+    await mkdir(tmpDir, { recursive: true });
+    const filePath = join(tmpDir, "test.ts");
+    await writeFile(
+      filePath,
+      `import { foo } from "./utils";\nimport express from "express";\nexport function main(): void {}`
+    );
+    const result = await extractFileSignatures(filePath, tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.imports).toBeDefined();
+    expect(result!.imports!.length).toBe(2);
+
+    const relImport = result!.imports!.find((i) => i.source === "./utils");
+    expect(relImport).toBeTruthy();
+    expect(relImport!.isRelative).toBe(true);
+
+    const absImport = result!.imports!.find((i) => i.source === "express");
+    expect(absImport).toBeTruthy();
+    expect(absImport!.isRelative).toBe(false);
+
+    await rm(tmpDir, { recursive: true });
+  });
+});
+
+describe("scanImports", () => {
+  test("extracts ES module imports", () => {
+    const code = `import { foo } from "./utils";\nimport bar from "express";`;
+    const imports = scanImports(code, "typescript");
+    expect(imports.length).toBe(2);
+    expect(imports[0]!.source).toBe("./utils");
+    expect(imports[0]!.isRelative).toBe(true);
+    expect(imports[1]!.source).toBe("express");
+    expect(imports[1]!.isRelative).toBe(false);
+  });
+
+  test("extracts require calls", () => {
+    const code = `const fs = require("fs");\nconst utils = require("./lib/utils");`;
+    const imports = scanImports(code, "javascript");
+    expect(imports.length).toBe(2);
+    expect(imports.find((i) => i.source === "fs")).toBeTruthy();
+    expect(imports.find((i) => i.source === "./lib/utils")!.isRelative).toBe(true);
+  });
+
+  test("extracts Python imports", () => {
+    const code = `import os\nfrom flask import Flask\nimport mypackage.utils`;
+    const imports = scanImports(code, "python");
+    expect(imports.length).toBe(3);
+    expect(imports.find((i) => i.source === "os")).toBeTruthy();
+    expect(imports.find((i) => i.source === "flask")).toBeTruthy();
+    expect(imports.find((i) => i.source === "mypackage.utils")).toBeTruthy();
+  });
+
+  test("extracts Rust use statements", () => {
+    const code = `use std::io;\nuse crate::config;`;
+    const imports = scanImports(code, "rust");
+    expect(imports.length).toBe(2);
+    expect(imports.find((i) => i.source === "std::io")).toBeTruthy();
+    expect(imports.find((i) => i.source === "crate::config")).toBeTruthy();
+  });
+
+  test("deduplicates imports", () => {
+    const code = `import { a } from "./utils";\nimport { b } from "./utils";`;
+    const imports = scanImports(code, "typescript");
+    expect(imports.length).toBe(1);
+  });
+
+  test("returns empty for unsupported language", () => {
+    const imports = scanImports("some code", "haskell");
+    expect(imports).toEqual([]);
+  });
+
+  test("extracts Go imports", () => {
+    const code = `package main\nimport (\n  "fmt"\n  "net/http"\n)`;
+    const imports = scanImports(code, "go");
+    expect(imports.length).toBe(2);
+    expect(imports.find((i) => i.source === "fmt")).toBeTruthy();
+    expect(imports.find((i) => i.source === "net/http")).toBeTruthy();
+  });
+});
+
+describe("extractFileSignatures imports-only", () => {
+  const tmpDir = join(tmpdir(), "think-test-imports-" + Date.now());
+
+  test("returns imports-only result when no signatures found", async () => {
+    await mkdir(tmpDir, { recursive: true });
+    const filePath = join(tmpDir, "imports-only.ts");
+    // File with imports but no extractable top-level declarations
+    await writeFile(filePath, `import { foo } from "./bar";\nfoo();\nconsole.log("hi");`);
+    const result = await extractFileSignatures(filePath, tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.imports).toBeDefined();
+    expect(result!.imports!.length).toBe(1);
+    expect(result!.imports![0]!.source).toBe("./bar");
+    expect(result!.signatures.length).toBe(0);
+    await rm(tmpDir, { recursive: true });
+  });
+
+  test("returns null when no signatures and no imports", async () => {
+    await mkdir(tmpDir, { recursive: true });
+    const filePath = join(tmpDir, "empty-code.ts");
+    // File with no imports and no extractable declarations
+    await writeFile(filePath, `console.log("hello");\nconst x = 1 + 2;`);
+    const result = await extractFileSignatures(filePath, tmpDir);
+    expect(result).toBeNull();
     await rm(tmpDir, { recursive: true });
   });
 });

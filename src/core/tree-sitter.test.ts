@@ -26,4 +26,14 @@ describe("tree-sitter loader", () => {
     const result = await __ts_test.loadGrammar("/nonexistent/bad.wasm");
     expect(result).toBeNull();
   });
+
+  test("pickWasmDir prefers inDist when it exists", async () => {
+    const dir = await __ts_test.pickWasmDir();
+    // If inDist exists, pickWasmDir should return it
+    if (await __ts_test.exists(__ts_test.inDist)) {
+      expect(dir).toBe(__ts_test.inDist);
+    }
+    // In all cases, the returned dir should be one of the three candidates
+    expect([__ts_test.inDist, __ts_test.distSibling, __ts_test.projectDist]).toContain(dir);
+  });
 });

@@ -180,6 +180,30 @@ other:
     await rm(dir, { recursive: true });
   });
 
+  test("parses boolean values in YAML", async () => {
+    const dir = join(tmpBase, "bool-yaml");
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, ".think.yaml"),
+      `context:\n  auto_knowledge: true\n`
+    );
+    const config = await loadContextConfig(dir);
+    expect(config.auto_knowledge).toBe(true);
+    await rm(dir, { recursive: true });
+  });
+
+  test("parses boolean false in YAML", async () => {
+    const dir = join(tmpBase, "bool-false-yaml");
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, ".think.yaml"),
+      `context:\n  auto_knowledge: false\n`
+    );
+    const config = await loadContextConfig(dir);
+    expect(config.auto_knowledge).toBe(false);
+    await rm(dir, { recursive: true });
+  });
+
   test("handles quoted scalar values", async () => {
     const dir = join(tmpBase, "quoted-yaml");
     await mkdir(dir, { recursive: true });

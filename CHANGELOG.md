@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-02-11
+
+### Added
+- Auto-generated knowledge entries fill unused knowledge budget with architecture, conventions, and dependency insights
+- Import scanning via regex for JS/TS, Python, Go, and Rust (runs alongside tree-sitter extraction)
+- `auto_knowledge` config option in `.think.yaml` (default: `true`, set `false` to disable)
+
+### Fixed
+- YAML parser now handles boolean values (`true`/`false`)
+
 ## [0.6.0] - 2026-02-11
 
 ### Added

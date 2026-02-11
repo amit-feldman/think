@@ -12,6 +12,7 @@ const DEFAULTS: ContextConfig = {
   exclude_signatures: ["**/*.test.ts", "**/*.spec.ts"],
   knowledge_dir: ".think/knowledge",
   signature_depth: "exports",
+  auto_knowledge: true,
 };
 
 /**
@@ -77,12 +78,18 @@ function parseSimpleYaml(text: string): Record<string, unknown> {
         currentArray = null;
       } else {
         // Scalar value
-        let value: string | number = rawValue.replace(/^["']|["']$/g, "");
-        const num = Number(value);
-        if (!isNaN(num) && value !== "") {
-          result[key] = num;
+        let value: string | number | boolean = rawValue.replace(/^["']|["']$/g, "");
+        if (value === "true") {
+          result[key] = true;
+        } else if (value === "false") {
+          result[key] = false;
         } else {
-          result[key] = value;
+          const num = Number(value);
+          if (!isNaN(num) && value !== "") {
+            result[key] = num;
+          } else {
+            result[key] = value;
+          }
         }
         currentKey = null;
         currentArray = null;

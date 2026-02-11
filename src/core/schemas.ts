@@ -22,6 +22,7 @@ export const contextConfigSchema = z.object({
   knowledge_dir: z.string().default(".think/knowledge"),
   signature_depth: z.enum(["exports", "all"]).default("exports"),
   code_map_format: z.enum(["skeleton", "signatures"]).default("skeleton"),
+  auto_knowledge: z.boolean().default(true),
 });
 
 export type ValidatedContextConfig = z.infer<typeof contextConfigSchema>;

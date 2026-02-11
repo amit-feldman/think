@@ -9,7 +9,8 @@ import { allocateBudget, redistributeSurplus } from "./budget.ts";
 import { estimateTokens, getProjectClaudeMdPath } from "./config.ts";
 import { sanitizeMarkdownHeading, sanitizeCodeBlock, isPathWithin } from "./security.ts";
 import type { ContextConfig } from "./project-config.ts";
-import type { FileSignatures } from "./extractor.ts";
+import { generateAutoKnowledge } from "./knowledge-gen.ts";
+import type { FileSignatures, SignatureEntry } from "./extractor.ts";
 import type { ProjectInfo } from "./project-detect.ts";
 
 export interface ContextSection {
@@ -106,12 +107,27 @@ function shouldIgnore(name: string, ignorePatterns: string[]): boolean {
 }
 
 /**
- * Determine priority for a source file based on its path.
+ * Check if a file's signatures are mostly re-exports (barrel file).
  */
-function filePriority(relPath: string): number {
+function isBarrelFile(signatures: SignatureEntry[]): boolean {
+  if (signatures.length === 0) return false;
+  const reExports = signatures.filter((s) => s.name.startsWith("re-export"));
+  return reExports.length / signatures.length > 0.5;
+}
+
+/**
+ * Determine priority for a source file based on its path and content.
+ */
+function filePriority(relPath: string, signatures?: SignatureEntry[]): number {
   const name = basename(relPath);
   const dir = dirname(relPath);
   const depth = relPath.split("/").length;
+
+  // Barrel files (mostly re-exports) get low priority — they show what's available
+  // but not how things work. Implementation files are more useful for context.
+  if (signatures && isBarrelFile(signatures)) {
+    return 1;
+  }
 
   // Entry points
   if (
@@ -137,9 +153,9 @@ function filePriority(relPath: string): number {
     return 10;
   }
 
-  // Type definition files
+  // Type definition files — deprioritized so implementation files surface first
   if (name === "types.ts" || name.endsWith(".d.ts") || name === "typings.ts") {
-    return 8;
+    return 3;
   }
 
   // Config/schema files
@@ -152,9 +168,19 @@ function filePriority(relPath: string): number {
     return 7;
   }
 
+  // Implementation density bonus: files with more functions/classes rank higher
+  let implBonus = 0;
+  if (signatures && signatures.length > 0) {
+    const implCount = signatures.filter(
+      (s) => s.kind === "function" || s.kind === "class"
+    ).length;
+    const implDensity = implCount / signatures.length;
+    implBonus = implDensity * 3;
+  }
+
   // Shallower files get higher priority (base: 5, reduced by depth)
   const depthBonus = Math.max(0, 5 - depth);
-  return 3 + depthBonus * 0.5;
+  return 3 + depthBonus * 0.5 + implBonus;
 }
 
 /**
@@ -237,6 +263,67 @@ async function buildKeyFiles(
 }
 
 /**
+ * Collapse a verbose type/interface body to a one-liner: `export interface Foo { ... }`
+ */
+function collapseBody(signature: string): string {
+  const braceIdx = signature.indexOf("{");
+  if (braceIdx === -1) return signature;
+  return signature.slice(0, braceIdx).trimEnd() + " { ... }";
+}
+
+/**
+ * Signature value for sorting: functions/classes are most valuable,
+ * then consts/enums, then types/interfaces.
+ */
+function signatureValue(kind: SignatureEntry["kind"]): number {
+  if (kind === "function" || kind === "class") return 3;
+  if (kind === "const" || kind === "enum") return 2;
+  return 1; // type, interface
+}
+
+/**
+ * Trim a file's signatures to fit within a token cap.
+ * Keeps highest-value signatures, collapses verbose type bodies.
+ */
+function trimSignatures(
+  sigs: SignatureEntry[],
+  cap: number,
+  filePath: string,
+  language: string,
+  useSkeleton: boolean
+): string {
+  // Sort by value descending, then by line number for stability
+  const sorted = [...sigs].sort((a, b) => {
+    const vDiff = signatureValue(b.kind) - signatureValue(a.kind);
+    return vDiff !== 0 ? vDiff : a.line - b.line;
+  });
+
+  const kept: { line: number; text: string }[] = [];
+  const overhead = estimateTokens(`### ${filePath}\n\`\`\`${language}\n\n\`\`\``);
+  let tokens = overhead;
+
+  for (const s of sorted) {
+    let text = useSkeleton ? s.signature : s.signature.replace(/\s*\{\s*\.\.\.\s*\}|\s*:\s*\.\.\./g, "");
+
+    // Collapse verbose type/interface bodies (>40 tokens)
+    if ((s.kind === "type" || s.kind === "interface") && estimateTokens(text) > 40) {
+      text = collapseBody(text);
+    }
+
+    const lineTokens = estimateTokens(text + "\n");
+    if (tokens + lineTokens > cap) continue;
+
+    kept.push({ line: s.line, text });
+    tokens += lineTokens;
+  }
+
+  // Re-sort by original line number for readable output
+  kept.sort((a, b) => a.line - b.line);
+
+  return kept.map((k) => k.text).join("\n");
+}
+
+/**
  * Build the code map section from extracted signatures.
  */
 function buildCodeMap(
@@ -244,13 +331,16 @@ function buildCodeMap(
   config: ContextConfig,
   budget: number
 ): { content: string; tokens: number; truncatedFiles: string[] } {
-  // Sort by priority (highest first)
+  // Sort by priority (highest first); barrel files get deprioritized
   const prioritized = fileSignatures
     .map((fs) => ({
       ...fs,
-      priority: filePriority(fs.path),
+      priority: filePriority(fs.path, fs.signatures),
     }))
     .sort((a, b) => b.priority - a.priority);
+
+  const fileCount = prioritized.filter((f) => f.signatures.length > 0).length;
+  const perFileCap = Math.max(200, Math.floor(budget / Math.min(fileCount || 1, 15)));
 
   const parts: string[] = [];
   let totalTokens = 0;
@@ -271,8 +361,19 @@ function buildCodeMap(
       .join("\n");
 
     const sigBlock = sanitizeCodeBlock(body);
-    const entry = `### ${file.path}\n\`\`\`${file.language}\n${sigBlock}\n\`\`\``;
-    const entryTokens = estimateTokens(entry);
+    let entry = `### ${file.path}\n\`\`\`${file.language}\n${sigBlock}\n\`\`\``;
+    let entryTokens = estimateTokens(entry);
+
+    // Per-file cap: trim signatures if this file is too verbose
+    if (entryTokens > perFileCap) {
+      const trimmedBody = trimSignatures(sigs, perFileCap, file.path, file.language, useSkeleton);
+      if (!trimmedBody) {
+        truncatedFiles.push(file.path);
+        continue;
+      }
+      entry = `### ${file.path}\n\`\`\`${file.language}\n${sanitizeCodeBlock(trimmedBody)}\n\`\`\``;
+      entryTokens = estimateTokens(entry);
+    }
 
     if (totalTokens + entryTokens > budget) {
       truncatedFiles.push(file.path);
@@ -356,7 +457,7 @@ export async function generateProjectContext(
   const truncated: string[] = [];
 
   // Allocate budget
-  let allocation = allocateBudget(totalBudget);
+  let allocation = allocateBudget(totalBudget, { monorepo: !!project.monorepo });
 
   // Walk project for all files
   const allFiles = await walkDir(projectDir, projectDir, DEFAULT_IGNORE);
@@ -419,13 +520,31 @@ export async function generateProjectContext(
     allocation.knowledge
   );
 
+  // Auto-generate knowledge if budget remains and feature is enabled
+  let autoKnowledgeContent = "";
+  let autoKnowledgeTokens = 0;
+  const remainingKnowledgeBudget = allocation.knowledge - knowledgeResult.tokens;
+  if (config.auto_knowledge !== false && remainingKnowledgeBudget > 200) {
+    const autoEntries = generateAutoKnowledge(
+      project,
+      allSignatures,
+      allFiles,
+      remainingKnowledgeBudget
+    );
+    if (autoEntries.length > 0) {
+      const parts = autoEntries.map((e) => `### ${e.title}\n\n${e.content}`);
+      autoKnowledgeContent = parts.join("\n\n");
+      autoKnowledgeTokens = estimateTokens(autoKnowledgeContent);
+    }
+  }
+
   // Redistribute surplus
   const used: Record<string, number> = {
     overview: overviewTokens,
     structure: structureTokens,
     keyFiles: keyFilesResult.tokens,
     codeMap: codeMapResult.tokens,
-    knowledge: knowledgeResult.tokens,
+    knowledge: knowledgeResult.tokens + autoKnowledgeTokens,
   };
 
   allocation = redistributeSurplus(allocation, used);
@@ -469,12 +588,17 @@ export async function generateProjectContext(
     });
   }
 
-  if (knowledgeResult.content) {
+  const combinedKnowledge = [knowledgeResult.content, autoKnowledgeContent]
+    .filter(Boolean)
+    .join("\n\n");
+  const combinedKnowledgeTokens = knowledgeResult.tokens + autoKnowledgeTokens;
+
+  if (combinedKnowledge) {
     sections.push({
       id: "knowledge",
       title: "Knowledge",
-      content: truncateToFit(knowledgeResult.content, allocation.knowledge),
-      tokens: Math.min(knowledgeResult.tokens, allocation.knowledge),
+      content: truncateToFit(combinedKnowledge, allocation.knowledge),
+      tokens: Math.min(combinedKnowledgeTokens, allocation.knowledge),
       priority: 5,
     });
   }
